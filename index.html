@@ -222,7 +222,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01i';
+const APP_VERSION = '2026-11-01j';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -619,14 +619,14 @@ const SC_BOXES = {
   route: ['1', '2', '3', '4', '5', '6', '7'],
   sfc: ['4-1', '4-2', '4-3', '5-1', '5-2', '5-3'],
 };
-const SC_SIDES_FB = ['前', '後'];                  // ②その前か後か
+const SC_SIDES_FB = ['前', '直前', '交換', '直後', '後'];  // ②そのアイテムに対するタイミング
 const SC_SIDES_LR = ['左側', '右側'];              // ③左右どちら側か
 // 「1のアイテムの後、右側」のような表示文。選んだ所だけつなぐ
 function scPosText(x) {
   // 周回・SFCの「2-3」のような番号は「2-3後」と短く、道中の「1」は「1のアイテムの後」
   const head = !x.box ? (x.fb || '')
     : x.box.includes('-') ? `${x.box}${x.fb || ''}`
-    : `${x.box}のアイテム${x.fb ? `の${x.fb}` : ''}`;
+    : `${x.box}のアイテム${!x.fb ? '' : x.fb === '交換' ? '交換' : `の${x.fb}`}`;
   // 周回・SFCは「2-3後 右側」とスペースで、道中は「7のアイテムの前、左側」と読点でつなぐ
   return [head, x.lr].filter(Boolean).join(x.box && x.box.includes('-') ? ' ' : '、');
 }
