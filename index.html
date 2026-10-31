@@ -66,6 +66,15 @@
   .style-edit .star.on { color: #ffd400; }
   .style-edit .clear { background: none; color: #888; font-size: 13px; margin-left: 8px; }
   .style-hint { font-size: 12px; color: #888; margin-top: 2px; }
+  /* 主要SCに必要なキノコ（1〜3個 / 金キノ） */
+  .sc { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; }
+  .sc img { height: 18px; }
+  .sc.big img { height: 34px; }
+  .sc.big { margin-bottom: 4px; }
+  .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .sc-edit button { background: #2a2c33; color: #aaa; display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
+  .sc-edit button img { height: 26px; }
+  .sc-edit button.on { background: #ffd400; color: #222; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   input[type=text], input[type=search], textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #15161a; color: #eee; }
   textarea { min-height: 70px; resize: vertical; }
@@ -450,6 +459,16 @@ function styleHtml(lv, big = false) {
   return `<span class="style${big ? ' big' : ''}">${'★'.repeat(lv)}<span class="off">${'☆'.repeat(5 - lv)}</span></span>`;
 }
 
+// 主要SCに必要なキノコ：notes に '1' '2' '3' '金' で保存
+const SC_FIELD = '主要SC';
+const SC_KEY = '主要SC必要数';
+const SC_OPTIONS = ['1', '2', '3', '金'];
+function scHtml(v, big = false) {
+  if (!SC_OPTIONS.includes(v)) return '';
+  const imgs = v === '金' ? '<img src="golden.png" alt="金キノ">' : '<img src="mushroom.png" alt="キノコ">'.repeat(+v);
+  return `<span class="sc${big ? ' big' : ''}" title="${v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
+}
+
 function filledCount(t) {
   const n = getNotes(t);
   return data.fields.filter(f => (n[f] || '').trim()).length;
@@ -469,7 +488,7 @@ function tagsOf(t) {
 function noteButton(t, label) {
   const b = document.createElement('button');
   const n = filledCount(t);
-  const st = styleHtml(parseStyle(getNotes(t)));
+  const st = styleHtml(parseStyle(getNotes(t))) + (scHtml(getNotes(t)[SC_KEY]) ? ' ' + scHtml(getNotes(t)[SC_KEY]) : '');
   b.innerHTML = `${esc(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
   b.onclick = () => openNote(t);
   return b;
@@ -596,7 +615,9 @@ function openNote(t, asEdit = false) {
       `<div class="field"><div class="name">前張り度</div><div class="body ${st ? '' : 'blank'}">${st || '（未入力）'}</div></div>` +
       data.fields.map(f => {
       const v = (notes[f] || '').trim();
-      return `<div class="field"><div class="name">${esc(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
+      const sc = f === SC_FIELD ? scHtml(notes[SC_KEY], true) : '';
+      const body = v ? linkify(v) : sc ? '' : '（未入力）';
+      return `<div class="field"><div class="name">${esc(f)}</div>${sc ? `<div>${sc}</div>` : ''}<div class="body ${v ? '' : 'blank'}">${body}</div></div>`;
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
@@ -606,7 +627,7 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + `<h3>${course ? 'コースを編集' : esc(titleOf(t))}</h3>` + chips +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="name">前張り度</div><div class="style-edit" id="styleEdit"></div><div class="style-hint">★5＝前張り寄り ／ ★1＝打開寄り</div></div>` +
-      data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div><textarea data-f="${i}">${esc(notes[f] || '')}</textarea></div>`).join('') +
+      data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div>${f === SC_FIELD ? '<div class="sc-edit" id="scEdit"></div>' : ''}<textarea data-f="${i}">${esc(notes[f] || '')}</textarea></div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
         <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
@@ -632,9 +653,18 @@ function openNote(t, asEdit = false) {
     };
     drawStyle();
 
+    // 主要SCに必要なキノコ（なし / 1 / 2 / 3 / 金キノ）
+    let scNeed = SC_OPTIONS.includes(notes[SC_KEY]) ? notes[SC_KEY] : '';
+    const drawSc = () => {
+      if (!$('scEdit')) return;
+      $('scEdit').innerHTML = ['', ...SC_OPTIONS].map(v => `<button class="${scNeed === v ? 'on' : ''}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('');
+      $('scEdit').querySelectorAll('button').forEach(b => b.onclick = () => { scNeed = b.dataset.sc; drawSc(); });
+    };
+    drawSc();
+
     $('saveN').onclick = () => {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
-      const next = { [STYLE_KEY]: style ? String(style) : '', '前張り/打開': '' };
+      const next = { [STYLE_KEY]: style ? String(style) : '', [SC_KEY]: scNeed, '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
       setNotes(t, { ...notes, ...next });
       saveData();
