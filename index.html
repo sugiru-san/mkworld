@@ -72,16 +72,16 @@
   .sc { display: inline-flex; align-items: center; gap: 1px; vertical-align: middle; }
   .sc img { height: 18px; }
   .sc.big img { height: 34px; }
-  .sc.big { margin-bottom: 4px; }
+  .sc.big { flex-shrink: 0; }
   .field .name img.field-icon { height: 22px; vertical-align: middle; margin-right: 4px; }
-  .sc-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #333; }
+  .sc-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #333; }
   .sc-item:last-child { border-bottom: none; }
-  .sc-item .body { flex: 1; }
+  .sc-item .body { min-width: 0; }
   .sc-row { background: #1b1c21; border-radius: 10px; padding: 8px; margin-bottom: 8px; }
   .sc-row .head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #888; margin-bottom: 6px; }
   .sc-row .del { background: none; color: #f77; padding: 4px 8px; font-size: 13px; }
   .sc-add { background: #2a2c33; color: #eee; width: 100%; }
-  .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .sc-edit button { background: #2a2c33; color: #aaa; display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
   .sc-edit button img { height: 26px; }
   .sc-edit button.on { background: #ffd400; color: #222; }
@@ -128,6 +128,7 @@
   <button id="mExport">⬇ データを書き出し（バックアップ）</button>
   <button id="mImport">⬆ データを読み込み</button>
   <button class="danger" id="mClose">閉じる</button>
+  <p class="hint" id="appVersion"></p>
 </div></div>
 
 <!-- GitHub同期の設定シート -->
@@ -154,6 +155,8 @@
 <script src="courses-data.js"></script>
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
+// 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
+const APP_VERSION = '2026-11-01b';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -663,7 +666,7 @@ function openNote(t, asEdit = false) {
       data.fields.map(f => {
       if (f === SC_FIELD) {
         const list = getScList(notes);
-        const items = list.map(x => `<div class="sc-item">${scHtml(x.need, true)}<div class="body">${linkify(x.text)}</div></div>`).join('');
+        const items = list.map(x => `<div class="sc-item"><div class="body">${linkify(x.text)}</div>${scHtml(x.need, true)}</div>`).join('');
         return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
@@ -711,8 +714,8 @@ function openNote(t, asEdit = false) {
       $('scList').innerHTML = scItems.map((x, i) => `
         <div class="sc-row">
           <div class="head">SC ${i + 1}<button class="del" data-del="${i}">削除</button></div>
-          <div class="sc-edit">${['', ...SC_OPTIONS].map(v => `<button class="${x.need === v ? 'on' : ''}" data-i="${i}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('')}</div>
           <textarea data-sc-text="${i}" placeholder="場所・入り方など">${esc(x.text)}</textarea>
+          <div class="sc-edit">${['', ...SC_OPTIONS].map(v => `<button class="${x.need === v ? 'on' : ''}" data-i="${i}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('')}</div>
         </div>`).join('');
       $('scList').querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { scItems[+b.dataset.i].need = b.dataset.sc; drawSc(); });
       $('scList').querySelectorAll('[data-sc-text]').forEach(el => el.oninput = () => { scItems[+el.dataset.scText].text = el.value; });
@@ -922,6 +925,7 @@ $('importFile').onchange = e => {
 };
 
 render();
+$('appVersion').textContent = `版：${APP_VERSION}`;
 pull();
 </script>
 </body>
