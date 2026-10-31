@@ -106,7 +106,16 @@
   .sc-row { background: var(--asphalt); border-radius: 12px; padding: 10px; margin-bottom: 8px; }
   .sc-row .head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
   .sc-row .del { background: none; color: var(--muted); padding: 4px 8px; font-size: 13px; }
-  .sc-row textarea { background: var(--pit); }
+  .sc-row textarea { background: var(--pit); min-height: 56px; margin-top: 8px; }
+  .sc-pick { display: grid; grid-template-columns: 4.5em 1fr; align-items: center; gap: 6px 8px; }
+  .sc-pick .lbl { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .sc-pick .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sc-pick .opts button { background: var(--pit-high); color: var(--curb-white); min-width: 44px; min-height: 40px; padding: 6px 10px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+  .sc-pick .opts button img { height: 24px; }
+  .sc-pick .opts button.on { background: var(--coin); color: var(--asphalt); }
+  .sc-item .pos { font-weight: 700; }
+  .sc-item .memo { font-size: 14px; color: var(--muted); }
   .sc-add { background: var(--pit-high); color: var(--curb-white); width: 100%; font-weight: 700; }
   .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .sc-edit button { background: var(--pit-high); color: var(--muted); display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
@@ -213,7 +222,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01e';
+const APP_VERSION = '2026-11-01f';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -603,6 +612,17 @@ function scHtml(v, big = false) {
   return `<span class="sc${big ? ' big' : ''}" title="${v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
 }
 
+// SCの位置の選択肢
+const SC_BOXES = ['1', '2', '3', '4', '5', '6'];   // ①何番目のアイテム（ボックス）
+const SC_SIDES_FB = ['前', '後'];                  // ②その前か後か
+const SC_SIDES_LR = ['左側', '右側'];              // ③左右どちら側か
+// 「1のアイテムの後、右側」のような表示文。選んだ所だけつなぐ
+function scPosText(x) {
+  const head = x.box ? `${x.box}のアイテム${x.fb ? `の${x.fb}` : ''}` : (x.fb || '');
+  return [head, x.lr].filter(Boolean).join('、');
+}
+const scFilled = x => x.box || x.fb || x.lr || x.need || (x.text || '').trim();
+
 function getScList(notes) {
   try {
     const list = JSON.parse(notes?.[SC_LIST_KEY] || 'null');
@@ -762,7 +782,10 @@ function openNote(t, asEdit = false) {
       data.fields.map(f => {
       if (f === SC_FIELD) {
         const list = getScList(notes);
-        const items = list.map(x => `<div class="sc-item"><div class="body">${linkify(x.text)}</div>${scHtml(x.need, true)}</div>`).join('');
+        const items = list.map(x => {
+          const pos = scPosText(x);
+          return `<div class="sc-item"><div class="body">${pos ? `<span class="pos">${esc(pos)}</span>` : ''}${x.text ? `<div class="${pos ? 'memo' : ''}">${linkify(x.text)}</div>` : ''}</div>${scHtml(x.need, true)}</div>`;
+        }).join('');
         return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
@@ -802,31 +825,45 @@ function openNote(t, asEdit = false) {
     };
     drawStyle();
 
-    // 主要SC：1件ごとに必要なキノコ（なし / 1 / 2 / 3 / 金キノ）と説明を入力。＋で追加、削除で消す
-    const scItems = getScList(notes).map(x => ({ ...x }));
-    if (!scItems.length) scItems.push({ need: '', text: '' });
+    // 主要SC：1件ごとに ①アイテム番号 ②前/後 ③左側/右側 ④キノコ を選び、補足は自由入力。＋で追加、削除で消す
+    // 選んでいるボタンをもう一度タップすると選択を外す
+    const blankSc = () => ({ box: '', fb: '', lr: '', need: '', text: '' });
+    const scItems = getScList(notes).map(x => ({ ...blankSc(), ...x }));
+    if (!scItems.length) scItems.push(blankSc());
+    const pickRow = (i, key, label, values, show = v => esc(v)) => `
+      <div class="lbl">${label}</div>
+      <div class="opts">${values.map(v => `<button class="${scItems[i][key] === v ? 'on' : ''}" data-i="${i}" data-key="${key}" data-v="${v}">${show(v)}</button>`).join('')}</div>`;
     const drawSc = () => {
       if (!$('scList')) return;
       $('scList').innerHTML = scItems.map((x, i) => `
         <div class="sc-row">
           <div class="head">SC ${i + 1}<button class="del" data-del="${i}">削除</button></div>
-          <textarea data-sc-text="${i}" placeholder="場所・入り方など">${esc(x.text)}</textarea>
-          <div class="sc-edit">${['', ...SC_OPTIONS].map(v => `<button class="${x.need === v ? 'on' : ''}" data-i="${i}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('')}</div>
+          <div class="sc-pick">
+            ${pickRow(i, 'box', 'アイテム', SC_BOXES)}
+            ${pickRow(i, 'fb', '前後', SC_SIDES_FB)}
+            ${pickRow(i, 'lr', '左右', SC_SIDES_LR)}
+            ${pickRow(i, 'need', 'キノコ', SC_OPTIONS, v => scHtml(v))}
+          </div>
+          <textarea data-sc-text="${i}" placeholder="補足（任意）">${esc(x.text)}</textarea>
         </div>`).join('');
-      $('scList').querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { scItems[+b.dataset.i].need = b.dataset.sc; drawSc(); });
+      $('scList').querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
+        const x = scItems[+b.dataset.i], k = b.dataset.key;
+        x[k] = x[k] === b.dataset.v ? '' : b.dataset.v;
+        drawSc();
+      });
       $('scList').querySelectorAll('[data-sc-text]').forEach(el => el.oninput = () => { scItems[+el.dataset.scText].text = el.value; });
       $('scList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { scItems.splice(+b.dataset.del, 1); drawSc(); });
     };
     drawSc();
     if ($('scAdd')) $('scAdd').onclick = () => {
-      scItems.push({ need: '', text: '' });
+      scItems.push(blankSc());
       drawSc();
-      $('scList').lastElementChild.querySelector('textarea').focus();
+      $('scList').lastElementChild.scrollIntoView({ block: 'nearest' });
     };
 
     $('saveN').onclick = () => {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
-      const scList = scItems.map(x => ({ need: x.need, text: x.text.trim() })).filter(x => x.need || x.text);
+      const scList = scItems.map(x => ({ box: x.box, fb: x.fb, lr: x.lr, need: x.need, text: x.text.trim() })).filter(scFilled);
       // 主要SCはリストに一本化し、1件だけだった頃の保存先は空にする
       const next = { [STYLE_KEY]: style ? String(style) : '', [OLD_STYLE_KEY]: '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
         [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
