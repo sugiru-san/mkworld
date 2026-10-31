@@ -505,7 +505,9 @@ const SC_KEY = '主要SC必要数';  // 1件だけだった頃の保存先（読
 const SC_OPTIONS = ['1', '2', '3', '金'];
 function scHtml(v, big = false) {
   if (!SC_OPTIONS.includes(v)) return '';
-  const imgs = v === '金' ? '<img src="golden.png" alt="金キノ">' : '<img src="mushroom.png" alt="キノコ">'.repeat(+v);
+  const imgs = v === '金' ? '<img src="golden.png" alt="金キノ">'
+    : v === '3' ? '<img src="mushroom3.png" alt="トリプルキノコ">'
+    : '<img src="mushroom.png" alt="キノコ">'.repeat(+v);
   return `<span class="sc${big ? ' big' : ''}" title="${v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
 }
 
