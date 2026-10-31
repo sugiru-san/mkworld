@@ -222,7 +222,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01h';
+const APP_VERSION = '2026-11-01i';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -627,7 +627,8 @@ function scPosText(x) {
   const head = !x.box ? (x.fb || '')
     : x.box.includes('-') ? `${x.box}${x.fb || ''}`
     : `${x.box}のアイテム${x.fb ? `の${x.fb}` : ''}`;
-  return [head, x.lr].filter(Boolean).join('、');
+  // 周回・SFCは「2-3後 右側」とスペースで、道中は「7のアイテムの前、左側」と読点でつなぐ
+  return [head, x.lr].filter(Boolean).join(x.box && x.box.includes('-') ? ' ' : '、');
 }
 const scFilled = x => x.box || x.fb || x.lr || x.need || (x.text || '').trim();
 
