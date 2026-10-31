@@ -57,21 +57,15 @@
   .field .body { white-space: pre-wrap; line-height: 1.6; word-break: break-word; }
   .field .body a { color: #6af; }
   .field .body.blank { color: #666; }
-  /* 前張り / 打開 の評価（★で強さを表示） */
-  .style { font-weight: bold; white-space: nowrap; }
-  .style.big { font-size: 20px; }
-  .style .stars { letter-spacing: 1px; }
-  .style.mae { color: #4ea8ff; }
-  .style.dakai { color: #ff7a45; }
-  .style .off { color: #fff; opacity: .9; }
-  .style-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .style-edit .dir { background: #2a2c33; color: #aaa; }
-  .style-edit .dir.on.mae { background: #4ea8ff; color: #fff; }
-  .style-edit .dir.on.dakai { background: #ff7a45; color: #fff; }
-  .style-edit .star { background: none; font-size: 28px; padding: 0 2px; color: #fff; }
-  .style-edit .star.on.mae { color: #4ea8ff; }
-  .style-edit .star.on.dakai { color: #ff7a45; }
-  .style-edit .clear { background: none; color: #888; font-size: 13px; }
+  /* 前張り度（★が多いほど前張り、少ないほど打開） */
+  .style { font-weight: bold; white-space: nowrap; color: #ffd400; letter-spacing: 1px; }
+  .style.big { font-size: 22px; }
+  .style .off { color: #fff; }
+  .style-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+  .style-edit .star { background: none; font-size: 30px; padding: 0 2px; color: #fff; }
+  .style-edit .star.on { color: #ffd400; }
+  .style-edit .clear { background: none; color: #888; font-size: 13px; margin-left: 8px; }
+  .style-hint { font-size: 12px; color: #888; margin-top: 2px; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   input[type=text], input[type=search], textarea { width: 100%; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid #444; background: #15161a; color: #eee; }
   textarea { min-height: 70px; resize: vertical; }
@@ -141,7 +135,8 @@
 <script src="courses-data.js"></script>
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
-const DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
+const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
+const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
 // 初期配置：map.jpg（1920x1080）上のコースアイコン中心座標(px)とコース名
 // 位置は道中コースのつながり（隣のコース同士が道でつながる）で検証済み
@@ -186,6 +181,13 @@ function migrate(d) {
   d.tomb = d.tomb || {};
   d.settingsU = d.settingsU || 0;
   if (d.pristine === undefined) d.pristine = false;
+  if (JSON.stringify(d.fields) === JSON.stringify(OLD_DEFAULT_FIELDS)) {
+    d.fields = DEFAULT_FIELDS.slice();
+    d.settingsU = Date.now();
+    const moveSC = n => { if (n && n['ショートカット'] && !n['主要SC']) n['主要SC'] = n['ショートカット']; };
+    d.courses.forEach(c => moveSC(c.notes));
+    Object.values(d.extra).forEach(moveSC);
+  }
   // 配置v2：サンサンさばくとマリオブラザーズサーキットの位置が逆だったので、保存済みの key を位置から付け直す
   if ((d.layoutVersion || 1) < 2) {
     for (const c of d.courses) {
@@ -434,17 +436,18 @@ function setNotes(t, notes) {
   else delete data.extra[noteKey(t)];
   touchExtra(noteKey(t));
 }
-// 前張り/打開の評価。notes に「前張り:4」のような文字列で保存する
-const STYLE_KEY = '前張り/打開';
-const STYLE_DIRS = { '前張り': 'mae', '打開': 'dakai' };
-function parseStyle(v) {
-  const m = /^(前張り|打開):([1-5])$/.exec(v || '');
-  return m ? { dir: m[1], lv: +m[2] } : null;
+// 前張り度：notes に '1'〜'5' の文字列で保存（★が多いほど前張り、少ないほど打開）
+const STYLE_KEY = '前張り度';
+function parseStyle(notes) {
+  const v = notes?.[STYLE_KEY];
+  if (/^[1-5]$/.test(v || '')) return +v;
+  // 試作版の「前張り:n / 打開:n」形式を読み替える
+  const old = /^(前張り|打開):([1-5])$/.exec(notes?.['前張り/打開'] || '');
+  return old ? (old[1] === '前張り' ? +old[2] : 6 - old[2]) : 0;
 }
-function styleHtml(v, big = false) {
-  const st = parseStyle(v);
-  if (!st) return '';
-  return `<span class="style ${STYLE_DIRS[st.dir]}${big ? ' big' : ''}">${st.dir} <span class="stars">${'★'.repeat(st.lv)}<span class="off">${'☆'.repeat(5 - st.lv)}</span></span></span>`;
+function styleHtml(lv, big = false) {
+  if (!lv) return '';
+  return `<span class="style${big ? ' big' : ''}">${'★'.repeat(lv)}<span class="off">${'☆'.repeat(5 - lv)}</span></span>`;
 }
 
 function filledCount(t) {
@@ -466,7 +469,7 @@ function tagsOf(t) {
 function noteButton(t, label) {
   const b = document.createElement('button');
   const n = filledCount(t);
-  const st = styleHtml(getNotes(t)[STYLE_KEY]);
+  const st = styleHtml(parseStyle(getNotes(t)));
   b.innerHTML = `${esc(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
   b.onclick = () => openNote(t);
   return b;
@@ -588,9 +591,9 @@ function openNote(t, asEdit = false) {
   const back = parentCourse ? `<button class="back" id="backBtn">‹ ${esc(parentCourse.name)} に戻る</button>` : '';
 
   if (!asEdit) {
-    const st = styleHtml(notes[STYLE_KEY], true);
+    const st = styleHtml(parseStyle(notes), true);
     sheet.innerHTML = back + `<h3>${esc(titleOf(t))}</h3>` + chips +
-      `<div class="field"><div class="name">前張り / 打開</div><div class="body ${st ? '' : 'blank'}">${st || '（未入力）'}</div></div>` +
+      `<div class="field"><div class="name">前張り度</div><div class="body ${st ? '' : 'blank'}">${st || '（未入力）'}</div></div>` +
       data.fields.map(f => {
       const v = (notes[f] || '').trim();
       return `<div class="field"><div class="name">${esc(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
@@ -602,7 +605,7 @@ function openNote(t, asEdit = false) {
   } else {
     sheet.innerHTML = back + `<h3>${course ? 'コースを編集' : esc(titleOf(t))}</h3>` + chips +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
-      `<div class="field"><div class="name">前張り / 打開</div><div class="style-edit" id="styleEdit"></div></div>` +
+      `<div class="field"><div class="name">前張り度</div><div class="style-edit" id="styleEdit"></div><div class="style-hint">★5＝前張り寄り ／ ★1＝打開寄り</div></div>` +
       data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div><textarea data-f="${i}">${esc(notes[f] || '')}</textarea></div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
@@ -619,26 +622,19 @@ function openNote(t, asEdit = false) {
       $('cW').oninput = live;
       $('cH').oninput = live;
     }
-    // 前張り/打開ボタンと★5つ。★をタップした数がその強さ
-    let style = parseStyle(notes[STYLE_KEY]) || { dir: '前張り', lv: 0 };
+    // ★5つ。タップした位置までが前張り度
+    let style = parseStyle(notes);
     const drawStyle = () => {
-      const cls = STYLE_DIRS[style.dir];
       $('styleEdit').innerHTML =
-        Object.entries(STYLE_DIRS).map(([d, c]) => `<button class="dir ${c}${style.dir === d ? ' on' : ''}" data-dir="${d}">${d}</button>`).join('') +
-        [1, 2, 3, 4, 5].map(i => `<button class="star ${cls}${i <= style.lv ? ' on' : ''}" data-lv="${i}">${i <= style.lv ? '★' : '☆'}</button>`).join('') +
-        '<button class="clear" data-clear="1">クリア</button>';
-      $('styleEdit').querySelectorAll('button').forEach(b => b.onclick = () => {
-        if (b.dataset.dir) style.dir = b.dataset.dir;
-        if (b.dataset.lv) style.lv = +b.dataset.lv;
-        if (b.dataset.clear) style.lv = 0;
-        drawStyle();
-      });
+        [1, 2, 3, 4, 5].map(i => `<button class="star${i <= style ? ' on' : ''}" data-lv="${i}">${i <= style ? '★' : '☆'}</button>`).join('') +
+        '<button class="clear" data-lv="0">クリア</button>';
+      $('styleEdit').querySelectorAll('button').forEach(b => b.onclick = () => { style = +b.dataset.lv; drawStyle(); });
     };
     drawStyle();
 
     $('saveN').onclick = () => {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
-      const next = { [STYLE_KEY]: style.lv ? `${style.dir}:${style.lv}` : '' };
+      const next = { [STYLE_KEY]: style ? String(style) : '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
       setNotes(t, { ...notes, ...next });
       saveData();
