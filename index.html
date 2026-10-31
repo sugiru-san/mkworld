@@ -71,6 +71,13 @@
   .sc img { height: 18px; }
   .sc.big img { height: 34px; }
   .sc.big { margin-bottom: 4px; }
+  .sc-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #333; }
+  .sc-item:last-child { border-bottom: none; }
+  .sc-item .body { flex: 1; }
+  .sc-row { background: #1b1c21; border-radius: 10px; padding: 8px; margin-bottom: 8px; }
+  .sc-row .head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #888; margin-bottom: 6px; }
+  .sc-row .del { background: none; color: #f77; padding: 4px 8px; font-size: 13px; }
+  .sc-add { background: #2a2c33; color: #eee; width: 100%; }
   .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .sc-edit button { background: #2a2c33; color: #aaa; display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
   .sc-edit button img { height: 26px; }
@@ -149,7 +156,7 @@ const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方',
 
 // 初期配置：map.jpg（1920x1080）上のコースアイコン中心座標(px)とコース名
 // 位置は道中コースのつながり（隣のコース同士が道でつながる）で検証済み
-const PRESET_MAP = 'map.jpg';
+const PRESET_MAP = 'map_cut.jpg';
 const PRESET_SPOTS = [
   ['どんぐりツリーハウス', 955, 95], ['おばけシネマ', 1140, 165], ['クッパキャッスル', 650, 175], ['ホネホネツイスター', 805, 180],
   ['ロゼッタてんもんだい', 1270, 250], ['マリオサーキット', 965, 290], ['キラーシップ', 490, 335], ['キノピオファクトリー', 815, 375],
@@ -161,6 +168,16 @@ const PRESET_SPOTS = [
   ['ハテナしんでん', 1315, 905], ['ディノディノジャングル', 1155, 975],
 ];
 const MAP_W = 1920, MAP_H = 1080, SPOT_W = 140, SPOT_H = 110;
+// map_cut.jpg は map.jpg の左右の海を切り落としたもの（map.jpg 上の (364, 21) から 1195x1059 を切り出し、等倍）
+const CUT = { x: 364, y: 21, w: 1195, h: 1059 };
+// map.jpg 基準の % 座標を map_cut.jpg 基準に直す
+function toCutPct(c) {
+  const px = v => v / 100 * MAP_W, py = v => v / 100 * MAP_H;
+  c.x = (px(c.x) - CUT.x) / CUT.w * 100;
+  c.y = (py(c.y) - CUT.y) / CUT.h * 100;
+  c.w = px(c.w) / CUT.w * 100;
+  c.h = py(c.h) / CUT.h * 100;
+}
 // 初代の仮名（見た目の特徴）。PRESET_SPOTS と同じ並び
 const OLD_PRESET_NAMES = ['大きな木', 'お化け屋敷（紫）', '火山の城', '溶岩のコース', '氷の宮殿', '迷路の盤面', '飛行船', '黄色と青の工場',
   'お菓子の島', '遺跡（ヘビ像）', 'ネオンのステージ', '風車と牛', '雪山のロッジ', '砂漠の宮殿', '茶色の鉱山', '和風の建物',
@@ -177,7 +194,8 @@ function presetData() {
     pristine: true,  // まだ一度も編集していない（同期時はGitHub側のデータをそのまま使う）
     courses: PRESET_SPOTS.map(([name, cx, cy], i) => ({
       id: 'p' + i, key: name, name, notes: {}, u: 0,
-      x: (cx - SPOT_W / 2) / MAP_W * 100, y: (cy - SPOT_H / 2) / MAP_H * 100, w: SPOT_W / MAP_W * 100, h: SPOT_H / MAP_H * 100,
+      x: (cx - SPOT_W / 2 - CUT.x) / CUT.w * 100, y: (cy - SPOT_H / 2 - CUT.y) / CUT.h * 100,
+      w: SPOT_W / CUT.w * 100, h: SPOT_H / CUT.h * 100,
     })),
   };
 }
@@ -205,7 +223,8 @@ function migrate(d) {
     d.layoutVersion = 2;
   }
   for (const c of d.courses) {
-    if (c.key) continue;
+    // 位置からの key 付けは map.jpg 時代のデータだけ（座標の基準が map.jpg のため）
+    if (c.key || d.image !== 'map.jpg') continue;
     const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
     let best = null, bestDist = 4;
     PRESET_SPOTS.forEach(([name, px, py]) => {
@@ -215,6 +234,13 @@ function migrate(d) {
     if (!best) continue;
     c.key = best;
     if (OLD_PRESET_NAMES.includes(c.name) || OFFICIAL_NAMES.includes(c.name)) c.name = best;
+  }
+  // 背景を余白なしの map_cut.jpg に切り替え、枠の位置もそれに合わせて直す
+  if (d.image === 'map.jpg') {
+    const now = Date.now();
+    d.courses.forEach(c => { toCutPct(c); c.u = now; });
+    d.image = 'map_cut.jpg';
+    d.settingsU = now;
   }
   return d;
 }
@@ -459,9 +485,10 @@ function styleHtml(lv, big = false) {
   return `<span class="style${big ? ' big' : ''}">${'★'.repeat(lv)}<span class="off">${'☆'.repeat(5 - lv)}</span></span>`;
 }
 
-// 主要SCに必要なキノコ：notes に '1' '2' '3' '金' で保存
+// 主要SC：複数登録できる。notes['主要SCリスト'] に [{ need: '1'|'2'|'3'|'金'|'', text }] のJSON文字列で保存
 const SC_FIELD = '主要SC';
-const SC_KEY = '主要SC必要数';
+const SC_LIST_KEY = '主要SCリスト';
+const SC_KEY = '主要SC必要数';  // 1件だけだった頃の保存先（読み込み時にリストへ変換）
 const SC_OPTIONS = ['1', '2', '3', '金'];
 function scHtml(v, big = false) {
   if (!SC_OPTIONS.includes(v)) return '';
@@ -469,9 +496,19 @@ function scHtml(v, big = false) {
   return `<span class="sc${big ? ' big' : ''}" title="${v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
 }
 
+function getScList(notes) {
+  try {
+    const list = JSON.parse(notes?.[SC_LIST_KEY] || 'null');
+    if (Array.isArray(list)) return list;
+  } catch (e) { console.error(e); }
+  const need = SC_OPTIONS.includes(notes?.[SC_KEY]) ? notes[SC_KEY] : '';
+  const text = (notes?.[SC_FIELD] || '').trim();
+  return need || text ? [{ need, text }] : [];
+}
+
 function filledCount(t) {
   const n = getNotes(t);
-  return data.fields.filter(f => (n[f] || '').trim()).length;
+  return data.fields.filter(f => f === SC_FIELD ? getScList(n).length : (n[f] || '').trim()).length;
 }
 function titleOf(t) {
   if (t.type === 'course') return data.courses.find(c => c.id === t.id)?.name || '';
@@ -488,7 +525,8 @@ function tagsOf(t) {
 function noteButton(t, label) {
   const b = document.createElement('button');
   const n = filledCount(t);
-  const st = styleHtml(parseStyle(getNotes(t))) + (scHtml(getNotes(t)[SC_KEY]) ? ' ' + scHtml(getNotes(t)[SC_KEY]) : '');
+  const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
+  const st = styleHtml(parseStyle(getNotes(t))) + (scs ? ' ' + scs : '');
   b.innerHTML = `${esc(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
   b.onclick = () => openNote(t);
   return b;
@@ -614,10 +652,13 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + `<h3>${esc(titleOf(t))}</h3>` + chips +
       `<div class="field"><div class="name">前張り度</div><div class="body ${st ? '' : 'blank'}">${st || '（未入力）'}</div></div>` +
       data.fields.map(f => {
+      if (f === SC_FIELD) {
+        const list = getScList(notes);
+        const items = list.map(x => `<div class="sc-item">${scHtml(x.need, true)}<div class="body">${linkify(x.text)}</div></div>`).join('');
+        return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
+      }
       const v = (notes[f] || '').trim();
-      const sc = f === SC_FIELD ? scHtml(notes[SC_KEY], true) : '';
-      const body = v ? linkify(v) : sc ? '' : '（未入力）';
-      return `<div class="field"><div class="name">${esc(f)}</div>${sc ? `<div>${sc}</div>` : ''}<div class="body ${v ? '' : 'blank'}">${body}</div></div>`;
+      return `<div class="field"><div class="name">${esc(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
@@ -627,7 +668,7 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + `<h3>${course ? 'コースを編集' : esc(titleOf(t))}</h3>` + chips +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="name">前張り度</div><div class="style-edit" id="styleEdit"></div><div class="style-hint">★5＝前張り寄り ／ ★1＝打開寄り</div></div>` +
-      data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div>${f === SC_FIELD ? '<div class="sc-edit" id="scEdit"></div>' : ''}<textarea data-f="${i}">${esc(notes[f] || '')}</textarea></div>`).join('') +
+      data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>' : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
         <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
@@ -653,18 +694,34 @@ function openNote(t, asEdit = false) {
     };
     drawStyle();
 
-    // 主要SCに必要なキノコ（なし / 1 / 2 / 3 / 金キノ）
-    let scNeed = SC_OPTIONS.includes(notes[SC_KEY]) ? notes[SC_KEY] : '';
+    // 主要SC：1件ごとに必要なキノコ（なし / 1 / 2 / 3 / 金キノ）と説明を入力。＋で追加、削除で消す
+    const scItems = getScList(notes).map(x => ({ ...x }));
+    if (!scItems.length) scItems.push({ need: '', text: '' });
     const drawSc = () => {
-      if (!$('scEdit')) return;
-      $('scEdit').innerHTML = ['', ...SC_OPTIONS].map(v => `<button class="${scNeed === v ? 'on' : ''}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('');
-      $('scEdit').querySelectorAll('button').forEach(b => b.onclick = () => { scNeed = b.dataset.sc; drawSc(); });
+      if (!$('scList')) return;
+      $('scList').innerHTML = scItems.map((x, i) => `
+        <div class="sc-row">
+          <div class="head">SC ${i + 1}<button class="del" data-del="${i}">削除</button></div>
+          <div class="sc-edit">${['', ...SC_OPTIONS].map(v => `<button class="${x.need === v ? 'on' : ''}" data-i="${i}" data-sc="${v}">${v ? scHtml(v) : 'なし'}</button>`).join('')}</div>
+          <textarea data-sc-text="${i}" placeholder="場所・入り方など">${esc(x.text)}</textarea>
+        </div>`).join('');
+      $('scList').querySelectorAll('[data-sc]').forEach(b => b.onclick = () => { scItems[+b.dataset.i].need = b.dataset.sc; drawSc(); });
+      $('scList').querySelectorAll('[data-sc-text]').forEach(el => el.oninput = () => { scItems[+el.dataset.scText].text = el.value; });
+      $('scList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { scItems.splice(+b.dataset.del, 1); drawSc(); });
     };
     drawSc();
+    if ($('scAdd')) $('scAdd').onclick = () => {
+      scItems.push({ need: '', text: '' });
+      drawSc();
+      $('scList').lastElementChild.querySelector('textarea').focus();
+    };
 
     $('saveN').onclick = () => {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
-      const next = { [STYLE_KEY]: style ? String(style) : '', [SC_KEY]: scNeed, '前張り/打開': '' };
+      const scList = scItems.map(x => ({ need: x.need, text: x.text.trim() })).filter(x => x.need || x.text);
+      // 主要SCはリストに一本化し、1件だけだった頃の保存先は空にする
+      const next = { [STYLE_KEY]: style ? String(style) : '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
+        [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
       setNotes(t, { ...notes, ...next });
       saveData();
