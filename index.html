@@ -73,6 +73,7 @@
   .sc img { height: 18px; }
   .sc.big img { height: 34px; }
   .sc.big { margin-bottom: 4px; }
+  .field .name img.field-icon { height: 22px; vertical-align: middle; margin-right: 4px; }
   .sc-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #333; }
   .sc-item:last-child { border-bottom: none; }
   .sc-item .body { flex: 1; }
@@ -521,6 +522,13 @@ function getScList(notes) {
   return need || text ? [{ need, text }] : [];
 }
 
+// 項目の見出し。キラー・サンダーは画像＋「ポイント」
+const FIELD_ICONS = { 'キラーポイント': ['killer.png', 'キラー'], 'サンダーポイント': ['thunder.png', 'サンダー'] };
+function fieldLabel(f) {
+  const icon = FIELD_ICONS[f];
+  return icon ? `<img class="field-icon" src="${icon[0]}" alt="${icon[1]}">ポイント` : esc(f);
+}
+
 function filledCount(t) {
   const n = getNotes(t);
   return data.fields.filter(f => f === SC_FIELD ? getScList(n).length : (n[f] || '').trim()).length;
@@ -659,7 +667,7 @@ function openNote(t, asEdit = false) {
         return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
-      return `<div class="field"><div class="name">${esc(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
+      return `<div class="field"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
@@ -669,7 +677,7 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + `<h3>${course ? 'コースを編集' : esc(titleOf(t))}</h3>` + chips +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
-      data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>' : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
+      data.fields.map((f, i) => `<div class="field"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>' : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
         <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
