@@ -115,6 +115,7 @@
   .sc-pick .opts button img { height: 24px; }
   .sc-pick .opts button.on { background: var(--coin); color: var(--asphalt); }
   .sc-item .pos { font-weight: 700; }
+  .field > .sc-pick + textarea { margin-top: 8px; min-height: 56px; }
   .sc-item .memo { font-size: 14px; color: var(--muted); }
   .sc-add { background: var(--pit-high); color: var(--curb-white); width: 100%; font-weight: 700; }
   .sc-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -222,7 +223,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01j';
+const APP_VERSION = '2026-11-01k';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -623,10 +624,10 @@ const SC_SIDES_FB = ['前', '直前', '交換', '直後', '後'];  // ②その�
 const SC_SIDES_LR = ['左側', '右側'];              // ③左右どちら側か
 // 「1のアイテムの後、右側」のような表示文。選んだ所だけつなぐ
 function scPosText(x) {
-  // 周回・SFCの「2-3」のような番号は「2-3後」と短く、道中の「1」は「1のアイテムの後」
+  // 周回・SFCの「2-3」のような番号は「2-3後」と短く、道中の「1」は「1のアイテム後」
   const head = !x.box ? (x.fb || '')
     : x.box.includes('-') ? `${x.box}${x.fb || ''}`
-    : `${x.box}のアイテム${!x.fb ? '' : x.fb === '交換' ? '交換' : `の${x.fb}`}`;
+    : `${x.box}のアイテム${x.fb || ''}`;
   // 周回・SFCは「2-3後 右側」とスペースで、道中は「7のアイテムの前、左側」と読点でつなぐ
   return [head, x.lr].filter(Boolean).join(x.box && x.box.includes('-') ? ' ' : '、');
 }
@@ -649,9 +650,21 @@ function fieldLabel(f) {
   return icon ? `<img class="field-icon" src="${icon[0]}" alt="${icon[1]}">ポイント` : esc(f);
 }
 
+// キラー・サンダーポイントの選択（notes['キラーポイント選択'] などに {box, fb} のJSON文字列で保存）
+const POINT_PICKS = {
+  'キラーポイント': { key: 'キラーポイント選択', fb: true },   // 例「2-3前」
+  'サンダーポイント': { key: 'サンダーポイント選択', fb: false }, // 例「2-3」
+};
+function getPick(notes, f) {
+  try { return { box: '', fb: '', ...JSON.parse(notes?.[POINT_PICKS[f].key] || '{}') }; }
+  catch (e) { console.error(e); return { box: '', fb: '' }; }
+}
+
 function filledCount(t) {
   const n = getNotes(t);
-  return data.fields.filter(f => f === SC_FIELD ? getScList(n).length : (n[f] || '').trim()).length;
+  return data.fields.filter(f => f === SC_FIELD ? getScList(n).length
+    : POINT_PICKS[f] && scPosText(getPick(n, f)) ? true
+    : (n[f] || '').trim()).length;
 }
 function titleOf(t) {
   if (t.type === 'course') return data.courses.find(c => c.id === t.id)?.name || '';
@@ -798,6 +811,10 @@ function openNote(t, asEdit = false) {
         return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
+      if (POINT_PICKS[f]) {
+        const pos = scPosText(getPick(notes, f));
+        if (pos) return `<div class="field"><div class="name">${fieldLabel(f)}</div><div class="sc-item"><div class="body"><span class="pos">${esc(pos)}</span>${v ? `<div class="memo">${linkify(v)}</div>` : ''}</div></div></div>`;
+      }
       return `<div class="field"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
@@ -808,7 +825,9 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
-      data.fields.map((f, i) => `<div class="field"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>' : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
+      data.fields.map((f, i) => `<div class="field"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
+        : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
+        : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
         <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
@@ -870,6 +889,24 @@ function openNote(t, asEdit = false) {
       $('scList').lastElementChild.scrollIntoView({ block: 'nearest' });
     };
 
+    // キラー・サンダーポイントの選択ボタン（選んでいるボタンをもう一度タップすると外す）
+    const picks = {};
+    sheet.querySelectorAll('[data-pick]').forEach(box => {
+      const f = box.dataset.pick;
+      picks[f] = getPick(notes, f);
+      const draw = () => {
+        const row = (key, label, values) => `<div class="lbl">${label}</div><div class="opts">${values.map(v =>
+          `<button class="${picks[f][key] === v ? 'on' : ''}" data-key="${key}" data-v="${v}">${esc(v)}</button>`).join('')}</div>`;
+        box.innerHTML = row('box', 'アイテム', SC_BOXES[t.type]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
+        box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
+          const k = b.dataset.key;
+          picks[f][k] = picks[f][k] === b.dataset.v ? '' : b.dataset.v;
+          draw();
+        });
+      };
+      draw();
+    });
+
     $('saveN').onclick = () => {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
       const scList = scItems.map(x => ({ box: x.box, fb: x.fb, lr: x.lr, need: x.need, text: x.text.trim() })).filter(scFilled);
@@ -877,6 +914,10 @@ function openNote(t, asEdit = false) {
       const next = { [STYLE_KEY]: style ? String(style) : '', [OLD_STYLE_KEY]: '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
         [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
+      for (const [f, v] of Object.entries(picks)) {
+        const val = POINT_PICKS[f].fb ? { box: v.box, fb: v.fb } : { box: v.box };
+        next[POINT_PICKS[f].key] = Object.values(val).some(Boolean) ? JSON.stringify(val) : '';
+      }
       setNotes(t, { ...notes, ...next });
       saveData();
       render();
