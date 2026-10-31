@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
-  /* デザイン方針「レースのピットボード」：路面グレーの上に、紅白の縁石だけを派手に使う */
+  /* デザイン方針「レースのピットボード」：路面グレーの上に、道路の白い破線（センターライン）をアクセントに使う */
   :root {
     --asphalt: #262A33;    /* 背景（路面） */
     --pit: #323744;        /* パネル・ボタン */
@@ -21,7 +21,7 @@
     --coin: #FFC21A;       /* ★・選択中 */
     --item-blue: #36A9E1;  /* リンク・同期 */
     --muted: #9AA3B5;      /* 補足の文字 */
-    --curb: repeating-linear-gradient(135deg, var(--curb-red) 0 14px, var(--curb-white) 14px 28px);
+    --curb: repeating-linear-gradient(90deg, var(--curb-white) 0 18px, transparent 18px 30px);  /* センターライン */
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin: 0; font-family: "Noto Sans JP", -apple-system, "Hiragino Sans", "Yu Gothic UI", sans-serif;
@@ -29,7 +29,7 @@
   :focus-visible { outline: 3px solid var(--coin); outline-offset: 2px; }
   header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 6px;
     padding: calc(10px + env(safe-area-inset-top)) 12px 16px; background: var(--asphalt); }
-  header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--curb); }
+  header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--curb); }
   header h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 900; letter-spacing: .02em; }
   header h1 span { display: inline-block; transform: skewX(-10deg); }
   button { font: inherit; border: none; border-radius: 10px; padding: 8px 12px; background: var(--pit-high); color: var(--curb-white); cursor: pointer; }
@@ -55,11 +55,11 @@
   .spot.view .label { display: none; }
   body.showLabels .spot.view .label { display: block; }
   .spot.edit { border: 2px solid var(--coin); background: rgba(255, 194, 26, .2); touch-action: none; }
-  /* 周回・道中・SFC の切り替え：選んでいる方の下に縁石 */
+  /* 周回・道中・SFC の切り替え：選んでいる方の下にセンターライン */
   .tabs { display: flex; gap: 4px; margin: 18px 0 10px; background: var(--pit); border-radius: 12px; padding: 4px; }
   .tabs button { flex: 1; position: relative; background: none; color: var(--muted); padding: 10px 4px 13px; font-size: 15px; font-weight: 700; border-radius: 9px; }
   .tabs button.on { background: var(--pit-high); color: var(--curb-white); }
-  .tabs button.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 4px; height: 4px; border-radius: 2px; background: var(--curb); }
+  .tabs button.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 5px; height: 3px; background: var(--curb); }
   #search { margin-bottom: 10px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 6px; }
   .grid button, .links button { background: var(--pit); color: var(--curb-white); text-align: left; font-weight: 700; padding: 10px 12px; }
@@ -69,8 +69,8 @@
   .sheet-bg.open { display: flex; }
   .sheet { position: relative; width: 100%; max-width: 720px; max-height: 88vh; overflow-y: auto; background: var(--pit); border-radius: 18px 18px 0 0;
     padding: 26px 18px calc(18px + env(safe-area-inset-bottom)); }
-  /* シート上端の縁石：コースを開いたとき、ここがタイトルカードになる */
-  .sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 10px; background: var(--curb); }
+  /* シート上端のセンターライン：コースを開いたとき、ここがタイトルカードになる */
+  .sheet::before { content: ""; position: absolute; left: 18px; right: 18px; top: 10px; height: 4px; background: var(--curb); }
   .sheet h3 { margin: 4px 0 16px; font-size: 28px; font-weight: 900; line-height: 1.25; }
   .sheet h3 .title { display: inline-block; transform: skewX(-10deg); }
   .sheet.menu h3 { font-size: 20px; }
@@ -213,7 +213,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01d';
+const APP_VERSION = '2026-11-01e';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
