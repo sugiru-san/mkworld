@@ -242,6 +242,18 @@ function migrate(d) {
     d.image = 'map_cut.jpg';
     d.settingsU = now;
   }
+
+  // 削除されたコース枠を初期位置に戻す（コースは増減しないため、30コースは常にそろえる）
+  if (d.image !== 'map.jpg') {
+    const preset = presetData().courses;
+    const now = Date.now();
+    preset.forEach(p => {
+      if (d.courses.some(c => c.key === p.key)) return;
+      const id = d.courses.some(c => c.id === p.id) ? newId() : p.id;
+      d.courses.push({ ...p, id, u: now });
+      delete d.tomb[id];
+    });
+  }
   return d;
 }
 
@@ -280,11 +292,6 @@ function saveData() {
 function touchCourse(c) { c.u = Date.now(); data.pristine = false; }
 function touchExtra(key) { data.extraU[key] = Date.now(); data.pristine = false; }
 function touchSettings() { data.settingsU = Date.now(); data.pristine = false; }
-function removeCourse(id) {
-  data.courses = data.courses.filter(x => x.id !== id);
-  data.tomb[id] = Date.now();
-  data.pristine = false;
-}
 
 // 2つのデータを合体する。コース枠・道中/SFCメモ・設定ごとに、変更時刻が新しい方を残す（同時刻なら a を優先）
 function mergeData(a, b) {
@@ -538,7 +545,7 @@ function render() {
   $('modeBtn').classList.toggle('on', editMode);
   $('modeBtn').textContent = editMode ? '編集中' : '編集';
   $('hint').textContent = editMode
-    ? '編集モード：画像の空いている所をタップでコース枠を追加／枠はドラッグで移動／枠をタップで内容を編集'
+    ? '編集モード：枠はドラッグで移動／枠をタップで内容を編集'
     : 'コースをタップすると立ち回りメモが開きます（そのコースから行ける道中コースもそこから開けます）';
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   renderStage();
@@ -570,23 +577,8 @@ function renderStage() {
     stage.appendChild(el);
   }
 
-  // 編集モード：空き部分タップで枠を追加
-  stage.onclick = e => {
-    if (!editMode || e.target !== img) return;
-    const r = stage.getBoundingClientRect();
-    const w = 14, h = 10;
-    const c = {
-      id: newId(), name: '新しいコース', notes: {},
-      x: clamp((e.clientX - r.left) / r.width * 100 - w / 2, 0, 100 - w),
-      y: clamp((e.clientY - r.top) / r.height * 100 - h / 2, 0, 100 - h),
-      w, h,
-    };
-    touchCourse(c);
-    data.courses.push(c);
-    saveData();
-    render();
-    openNote({ type: 'course', id: c.id }, true);
-  };
+  // コースは増減しないので、枠の追加はしない
+  stage.onclick = null;
 }
 
 // 枠のドラッグ移動（少しでも動いたら移動、動かなければタップ＝編集を開く）
@@ -672,7 +664,7 @@ function openNote(t, asEdit = false) {
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
         <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
-      `<div class="row"><button class="danger" id="delN">${course ? '削除' : 'メモを消す'}</button><button class="primary" id="saveN">保存</button></div>`;
+      `<div class="row"><button class="danger" id="delN">メモを消す</button><button class="primary" id="saveN">保存</button></div>`;
     if (course && data.image) {
       // スライダーで枠サイズを変えるとすぐ背景上に反映
       const live = () => {
@@ -729,18 +721,12 @@ function openNote(t, asEdit = false) {
       openNote(t, false);
     };
     $('delN').onclick = () => {
-      if (course) {
-        if (!confirm(`「${course.name}」の枠を削除しますか？（メモも消えます）`)) return;
-        removeCourse(course.id);
-        saveData();
-        closeNote();
-      } else {
-        if (!confirm('このコースのメモを消しますか？')) return;
-        setNotes(t, {});
-        saveData();
-        render();
-        openNote(t, false);
-      }
+      // 枠は消さず、メモだけ消す
+      if (!confirm('このコースのメモを消しますか？')) return;
+      setNotes(t, {});
+      saveData();
+      render();
+      openNote(t, false);
     };
   }
   if (parentCourse) $('backBtn').onclick = () => openNote({ type: 'course', id: parentCourse.id });
