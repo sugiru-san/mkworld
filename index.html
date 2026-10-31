@@ -57,7 +57,9 @@
   .field .body { white-space: pre-wrap; line-height: 1.6; word-break: break-word; }
   .field .body a { color: #6af; }
   .field .body.blank { color: #666; }
-  /* 前張り度（★が多いほど前張り、少ないほど打開） */
+  /* 前張り ★☆☆☆☆ 打開（★が多いほど打開寄り） */
+  .style-end { font-size: 13px; color: #aaa; font-weight: bold; margin: 0 6px; }
+  .style-end:first-child { margin-left: 0; }
   .style { font-weight: bold; white-space: nowrap; color: #ffd400; letter-spacing: 1px; }
   .style.big { font-size: 22px; }
   .style .off { color: #fff; }
@@ -478,18 +480,22 @@ function setNotes(t, notes) {
   else delete data.extra[noteKey(t)];
   touchExtra(noteKey(t));
 }
-// 前張り度：notes に '1'〜'5' の文字列で保存（★が多いほど前張り、少ないほど打開）
-const STYLE_KEY = '前張り度';
+// 打開度：notes に '1'〜'5' の文字列で保存。前張り ★☆☆☆☆ 打開 の並びで、★が多いほど打開寄り
+const STYLE_KEY = '打開度';
+const OLD_STYLE_KEY = '前張り度';  // 前の版（★が多いほど前張り）。読むときに向きを反転する
 function parseStyle(notes) {
   const v = notes?.[STYLE_KEY];
   if (/^[1-5]$/.test(v || '')) return +v;
+  const oldLv = notes?.[OLD_STYLE_KEY];
+  if (/^[1-5]$/.test(oldLv || '')) return 6 - oldLv;
   // 試作版の「前張り:n / 打開:n」形式を読み替える
   const old = /^(前張り|打開):([1-5])$/.exec(notes?.['前張り/打開'] || '');
-  return old ? (old[1] === '前張り' ? +old[2] : 6 - old[2]) : 0;
+  return old ? (old[1] === '打開' ? +old[2] : 6 - old[2]) : 0;
 }
 function styleHtml(lv, big = false) {
   if (!lv) return '';
-  return `<span class="style${big ? ' big' : ''}">${'★'.repeat(lv)}<span class="off">${'☆'.repeat(5 - lv)}</span></span>`;
+  const stars = `<span class="style${big ? ' big' : ''}">${'★'.repeat(lv)}<span class="off">${'☆'.repeat(5 - lv)}</span></span>`;
+  return big ? `<span class="style-end">前張り</span>${stars}<span class="style-end">打開</span>` : stars;
 }
 
 // 主要SC：複数登録できる。notes['主要SCリスト'] に [{ need: '1'|'2'|'3'|'金'|'', text }] のJSON文字列で保存
@@ -642,7 +648,8 @@ function openNote(t, asEdit = false) {
   if (!asEdit) {
     const st = styleHtml(parseStyle(notes), true);
     sheet.innerHTML = back + `<h3>${esc(titleOf(t))}</h3>` + chips +
-      `<div class="field"><div class="name">前張り度</div><div class="body ${st ? '' : 'blank'}">${st || '（未入力）'}</div></div>` +
+      // 見出しは付けず、未入力のときは空の☆を薄く出す
+      `<div class="field"><div class="body ${st ? '' : 'blank'}">${st || '<span class="style-end">前張り</span>☆☆☆☆☆<span class="style-end">打開</span>'}</div></div>` +
       data.fields.map(f => {
       if (f === SC_FIELD) {
         const list = getScList(notes);
@@ -659,7 +666,7 @@ function openNote(t, asEdit = false) {
   } else {
     sheet.innerHTML = back + `<h3>${course ? 'コースを編集' : esc(titleOf(t))}</h3>` + chips +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
-      `<div class="field"><div class="name">前張り度</div><div class="style-edit" id="styleEdit"></div><div class="style-hint">★5＝前張り寄り ／ ★1＝打開寄り</div></div>` +
+      `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
       data.fields.map((f, i) => `<div class="field"><div class="name">${esc(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>' : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
@@ -676,12 +683,12 @@ function openNote(t, asEdit = false) {
       $('cW').oninput = live;
       $('cH').oninput = live;
     }
-    // ★5つ。タップした位置までが前張り度
+    // 前張り ★★★★★ 打開。タップした位置までが打開度
     let style = parseStyle(notes);
     const drawStyle = () => {
-      $('styleEdit').innerHTML =
+      $('styleEdit').innerHTML = '<span class="style-end">前張り</span>' +
         [1, 2, 3, 4, 5].map(i => `<button class="star${i <= style ? ' on' : ''}" data-lv="${i}">${i <= style ? '★' : '☆'}</button>`).join('') +
-        '<button class="clear" data-lv="0">クリア</button>';
+        '<span class="style-end">打開</span><button class="clear" data-lv="0">クリア</button>';
       $('styleEdit').querySelectorAll('button').forEach(b => b.onclick = () => { style = +b.dataset.lv; drawStyle(); });
     };
     drawStyle();
@@ -712,7 +719,7 @@ function openNote(t, asEdit = false) {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
       const scList = scItems.map(x => ({ need: x.need, text: x.text.trim() })).filter(x => x.need || x.text);
       // 主要SCはリストに一本化し、1件だけだった頃の保存先は空にする
-      const next = { [STYLE_KEY]: style ? String(style) : '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
+      const next = { [STYLE_KEY]: style ? String(style) : '', [OLD_STYLE_KEY]: '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
         [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
       setNotes(t, { ...notes, ...next });
