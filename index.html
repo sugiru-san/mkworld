@@ -304,7 +304,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02m';
+const APP_VERSION = '2026-11-02n';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -490,7 +490,7 @@ function mergeData(a, b) {
   return {
     image: s.image, fields: s.fields, showLabels: s.showLabels, settingsU: s.settingsU || 0,
     layoutVersion: Math.max(a.layoutVersion || 1, b.layoutVersion || 1),
-    courses, tomb, extra, extraU, pristine: false, noSpaceV1: !!(a.noSpaceV1 || b.noSpaceV1),
+    courses, tomb, extra, extraU, pristine: false, noSpaceV1: !!(a.noSpaceV1 || b.noSpaceV1), killerPosV1: !!(a.killerPosV1 || b.killerPosV1),
   };
 }
 
@@ -846,7 +846,8 @@ function mergeIntoTachimawari(notes) {
   if (!notes) return false;
   const lines = [];
   for (const x of getScList(notes)) lines.push(['SC', scPosText(x).replace(/[ 、]/g, ''), NEED_WORD[x.need] || '', x.text || ''].filter(Boolean).join(''));
-  for (const x of getKillerList(notes)) lines.push(['キラー', scPosText(x).replace(/[ 、]/g, ''), x.text || ''].filter(Boolean).join(''));
+  // キラーはSCのキノコと同じく、位置の後ろに置く（例「3-1前キラー」）
+  for (const x of getKillerList(notes)) lines.push([scPosText(x).replace(/[ 、]/g, ''), 'キラー', x.text || ''].filter(Boolean).join(''));
   const had = [SC_LIST_KEY, SC_KEY, SC_FIELD, KILLER_LIST_KEY, KILLER_FIELD, POINT_PICKS[KILLER_FIELD].key].some(k => String(notes[k] || '').trim());
   if (!had) return false;
   const cur = (notes['立ち回り'] || '').trim();
@@ -878,6 +879,22 @@ function upgradeMerged(d) {
     for (const c of d.courses) if (fix(c.notes)) c.u = now;
     for (const [k, n] of Object.entries(d.extra || {})) if (fix(n)) d.extraU[k] = now;
     d.noSpaceV1 = true;
+    changed = true;
+  }
+  // 1回だけ：「キラー3-1前」の形で移した行を「3-1前キラー」に並べ替える
+  if (!d.killerPosV1) {
+    const re = /^キラー((?:\d-\d|\d+のアイテム)(?:直前|直後|交換|前|後)?)(.*)$/;
+    const fix = n => {
+      const v = n?.['立ち回り'];
+      if (!v) return false;
+      const next = v.split('\n').map(l => l.replace(re, (_, pos, rest) => `${pos}キラー${rest}`)).join('\n');
+      if (next === v) return false;
+      n['立ち回り'] = next;
+      return true;
+    };
+    for (const c of d.courses) if (fix(c.notes)) c.u = now;
+    for (const [k, n] of Object.entries(d.extra || {})) if (fix(n)) d.extraU[k] = now;
+    d.killerPosV1 = true;
     changed = true;
   }
   return changed;
