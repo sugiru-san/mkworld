@@ -123,16 +123,16 @@
   .sc-edit button img { height: 26px; }
   .sc-edit button.on { background: var(--coin); color: var(--asphalt); }
   /* 平均順位 */
-  .rank-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .rank-head { display: flex; align-items: center; gap: 10px; }
   .rank-avg { font-size: 34px; font-weight: 900; line-height: 1.1; }
   .rank-avg small { font-size: 16px; margin-left: 2px; }
   .rank-n { font-size: 13px; color: var(--muted); font-weight: 700; }
   .rank-recent { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; }
   .rank-recent span { min-width: 28px; text-align: center; padding: 1px 6px; border-radius: 8px; background: var(--asphalt); font-size: 13px; font-weight: 700; }
   .rank-recent span.top { color: var(--coin); }
-  .rank-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .rank-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
   .rank-actions button { font-weight: 700; }
-  .rank-actions .undo { background: none; color: var(--muted); font-size: 13px; }
+  .rank-actions .undo { background: none; color: var(--muted); font-size: 13px; padding: 8px 6px; }
   .rank-pad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
   .rank-pad button { min-height: 44px; padding: 0; font-weight: 900; font-size: 16px; }
   /* タップで編集に入れる項目 */
@@ -240,7 +240,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01n';
+const APP_VERSION = '2026-11-01o';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -1030,11 +1030,12 @@ function renderRank(t, padOpen = false) {
   const ranks = getRanks(getNotes(t));
   const avg = rankAvg(ranks);
   const recent = ranks.slice(-10).reverse();
+  // 平均と戦数を左、「＋記録」「取り消し」を右に1行で並べる
+  const actions = `<span class="rank-actions">${ranks.length ? '<button class="undo" id="rankUndo">取り消し</button>' : ''}<button id="rankAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
   box.innerHTML = `<div class="name">平均順位</div>` +
-    (avg ? `<div class="rank-head"><span class="rank-avg">${avg}<small>位</small></span><span class="rank-n">${ranks.length}戦</span></div>
-      <div class="rank-recent" title="最近の順位（新しい順）">${recent.map(n => `<span class="${n <= 3 ? 'top' : ''}">${n}</span>`).join('')}</div>`
-      : '<div class="body blank">まだ記録がありません</div>') +
-    `<div class="rank-actions"><button id="rankAdd">${padOpen ? '閉じる' : '＋ 順位を記録'}</button>${ranks.length ? '<button class="undo" id="rankUndo">最後の記録を取り消す</button>' : ''}</div>` +
+    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>位</small></span><span class="rank-n">${ranks.length}戦</span>`
+      : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
+    (avg ? `<div class="rank-recent" title="最近の順位（新しい順）">${recent.map(n => `<span class="${n <= 3 ? 'top' : ''}">${n}</span>`).join('')}</div>` : '') +
     (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}</button>`).join('')}</div>` : '');
   const save = next => {
     setNotes(t, { ...getNotes(t), [RANK_KEY]: next.length ? JSON.stringify(next) : '' });
