@@ -244,7 +244,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01t';
+const APP_VERSION = '2026-11-01u';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -720,7 +720,7 @@ function noteButton(t, label) {
   const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
   const avg = rankAvg(getRanks(getNotes(t)));
   const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
-  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `平均${avg}位` : ''].filter(Boolean).join(' ');
+  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `Ave ${avg}` : ''].filter(Boolean).join(' ');
   // 何項目入力したかの数や道の長さは出さない。★などが無く、文章のメモや道の長さだけのときは「メモあり」
   const memo = n || len;
   b.innerHTML = `${nameHtml(label)}<small class="${memo || st ? '' : 'none'}">${st || (memo ? 'メモあり' : '未入力')}</small>`;
@@ -1056,7 +1056,7 @@ function renderRank(t, padOpen = false) {
   const avg = rankAvg(ranks);
   // 平均と戦数を左、「＋記録」「取り消し」を右に1行で並べる
   const actions = `<span class="rank-actions">${ranks.length ? '<button class="undo" id="rankUndo">取り消し</button>' : ''}<button id="rankAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
-  box.innerHTML = `<div class="name">平均順位</div>` +
+  box.innerHTML = `<div class="name">Ave</div>` +
     `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>位</small></span><span class="rank-n">${ranks.length}戦</span>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
     // 過去の順位は平均の計算用に保存するだけで、一覧表示はしない
@@ -1077,7 +1077,7 @@ function renderRank(t, padOpen = false) {
     const next = [...ranks, +b.dataset.rank];
     save(next);
     renderRank(t, false);
-    toast(`${b.dataset.rank}位を記録しました（平均 ${rankAvg(next)}位）`);
+    toast(`${b.dataset.rank}位を記録しました（Ave ${rankAvg(next)}）`);
   });
 }
 
