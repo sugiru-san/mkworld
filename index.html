@@ -240,7 +240,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01m';
+const APP_VERSION = '2026-11-01n';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -688,6 +688,10 @@ function getRanks(notes) {
 }
 const rankAvg = ranks => ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : '';
 
+// 道の長さ（道中コースだけ）：notes['道の長さ'] に '1'〜'5'。★が多いほど長い
+const LENGTH_KEY = '道の長さ';
+const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LENGTH_KEY] : 0;
+
 function filledCount(t) {
   const n = getNotes(t);
   return data.fields.filter(f => f === SC_FIELD ? getScList(n).length
@@ -711,7 +715,8 @@ function noteButton(t, label) {
   const n = filledCount(t);
   const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
   const avg = rankAvg(getRanks(getNotes(t)));
-  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `平均${avg}位` : ''].filter(Boolean).join(' ');
+  const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
+  const st = [styleHtml(parseStyle(getNotes(t))), len ? `長さ${len}` : '', scs, avg ? `平均${avg}位` : ''].filter(Boolean).join(' ');
   b.innerHTML = `${nameHtml(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
   b.onclick = () => openNote(t);
   return b;
@@ -830,6 +835,7 @@ function openNote(t, asEdit = false, focusField = null) {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       // 見出しは付けず、未入力のときは空の☆を薄く出す
       '<div class="field"><div class="body" id="styleView"></div></div>' +
+      (t.type === 'route' ? '<div class="field"><div class="body" id="lengthView"></div></div>' : '') +
       '<div class="field" id="rankBox"></div>' +
       data.fields.map(f => {
       if (f === SC_FIELD) {
@@ -856,27 +862,32 @@ function openNote(t, asEdit = false, focusField = null) {
       if (e.target.closest('a')) return;
       openNote(t, true, el.dataset.edit);
     });
-    // ★をその場でタップして保存
-    const drawStyleView = () => {
-      const lv = parseStyle(getNotes(t));
-      $('styleView').innerHTML = '<span class="style-end">前張り</span><span class="style big">' +
-        [1, 2, 3, 4, 5].map(i => `<button class="style-tap${i <= lv ? '' : ' off'}" data-lv="${i}" aria-label="★${i}">${i <= lv ? '★' : '☆'}</button>`).join('') +
-        '</span><span class="style-end">打開</span>';
-      $('styleView').querySelectorAll('[data-lv]').forEach(b => b.onclick = () => {
+    // ★をその場でタップして保存（同じ★をもう一度で外す）
+    const drawRatingView = (boxId, read, key, left, right, label) => {
+      const box = $(boxId);
+      if (!box) return;
+      const lv = read(getNotes(t));
+      box.innerHTML = `<span class="style-end">${left}</span><span class="style big">` +
+        [1, 2, 3, 4, 5].map(i => `<button class="style-tap${i <= lv ? '' : ' off'}" data-lv="${i}" aria-label="${label}★${i}">${i <= lv ? '★' : '☆'}</button>`).join('') +
+        `</span><span class="style-end">${right}</span>`;
+      box.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => {
         const v = +b.dataset.lv === lv ? 0 : +b.dataset.lv;
-        setNotes(t, { ...getNotes(t), [STYLE_KEY]: v ? String(v) : '', [OLD_STYLE_KEY]: '', '前張り/打開': '' });
+        const extra = key === STYLE_KEY ? { [OLD_STYLE_KEY]: '', '前張り/打開': '' } : {};
+        setNotes(t, { ...getNotes(t), [key]: v ? String(v) : '', ...extra });
         saveData();
         renderList();
-        drawStyleView();
-        toast(v ? `★${v}にしました` : '★を外しました');
+        drawRatingView(boxId, read, key, left, right, label);
+        toast(v ? `${label}を★${v}にしました` : `${label}の★を外しました`);
       });
     };
-    drawStyleView();
+    drawRatingView('styleView', parseStyle, STYLE_KEY, '前張り', '打開', '前張り/打開');
+    drawRatingView('lengthView', getLength, LENGTH_KEY, '短い', '長い', '道の長さ');
     $('closeN').onclick = closeNote;
   } else {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
+      (t.type === 'route' ? `<div class="field"><div class="style-edit" id="lengthEdit"></div><div class="style-hint">道の長さ：★1＝短い ／ ★5＝長い</div></div>` : '') +
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
@@ -904,6 +915,17 @@ function openNote(t, asEdit = false, focusField = null) {
       $('styleEdit').querySelectorAll('button').forEach(b => b.onclick = () => { style = +b.dataset.lv; drawStyle(); });
     };
     drawStyle();
+
+    // 道の長さ（道中だけ）
+    let length = getLength(notes);
+    const drawLength = () => {
+      if (!$('lengthEdit')) return;
+      $('lengthEdit').innerHTML = '<span class="style-end">短い</span>' +
+        [1, 2, 3, 4, 5].map(i => `<button class="star${i <= length ? ' on' : ''}" data-lv="${i}">${i <= length ? '★' : '☆'}</button>`).join('') +
+        '<span class="style-end">長い</span><button class="clear" data-lv="0">クリア</button>';
+      $('lengthEdit').querySelectorAll('button').forEach(b => b.onclick = () => { length = +b.dataset.lv; drawLength(); });
+    };
+    drawLength();
 
     // 主要SC：1件ごとに ①アイテム番号 ②前/後 ③左側/右側 ④キノコ を選び、補足は自由入力。＋で追加、削除で消す
     // 選んでいるボタンをもう一度タップすると選択を外す
@@ -963,7 +985,8 @@ function openNote(t, asEdit = false, focusField = null) {
       if (course) course.name = $('cName').value.trim() || '名称未設定';
       const scList = scItems.map(x => ({ box: x.box, fb: x.fb, lr: x.lr, need: x.need, text: x.text.trim() })).filter(scFilled);
       // 主要SCはリストに一本化し、1件だけだった頃の保存先は空にする
-      const next = { [STYLE_KEY]: style ? String(style) : '', [OLD_STYLE_KEY]: '', [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
+      const next = { [STYLE_KEY]: style ? String(style) : '', [OLD_STYLE_KEY]: '',
+        ...(t.type === 'route' ? { [LENGTH_KEY]: length ? String(length) : '' } : {}), [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
         [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
       for (const [f, v] of Object.entries(picks)) {
