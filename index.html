@@ -281,7 +281,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02d';
+const APP_VERSION = '2026-11-02e';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -867,10 +867,18 @@ function renderStage() {
   const dests = routing && routeFrom ? routeDests(routeFrom) : [];
   // 出発から行き先へ線を引く
   if (dests.length) {
-    const center = key => { const c = courseByKey(key); return c ? [c.x + c.w / 2, c.y + c.h / 2] : null; };
-    const [fx, fy] = center(routeFrom) || [0, 0];
-    stage.insertAdjacentHTML('beforeend', `<svg class="route-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${
-      dests.map(center).filter(Boolean).map(([x, y]) => `<line x1="${fx}" y1="${fy}" x2="${x}" y2="${y}" vector-effect="non-scaling-stroke"/>`).join('')}</svg>`);
+    // 線は枠の外側だけに引く（出発の枠を出た所から、行き先の枠に入る手前まで）
+    const from = courseByKey(routeFrom);
+    const GAP = 0.6;  // 枠と線のすき間（%）
+    const lines = !from ? [] : dests.map(courseByKey).filter(Boolean).map(to => {
+      const fx = from.x + from.w / 2, fy = from.y + from.h / 2, tx = to.x + to.w / 2, ty = to.y + to.h / 2;
+      const dx = tx - fx, dy = ty - fy;
+      // 中心から出たとき、枠（半分の幅・高さ＋すき間）を抜けるまでの割合
+      const exit = (w, h) => Math.min(dx ? (w / 2 + GAP) / Math.abs(dx) : Infinity, dy ? (h / 2 + GAP) / Math.abs(dy) : Infinity);
+      const t1 = exit(from.w, from.h), t2 = 1 - exit(to.w, to.h);
+      return t2 > t1 ? `<line x1="${fx + dx * t1}" y1="${fy + dy * t1}" x2="${fx + dx * t2}" y2="${fy + dy * t2}" vector-effect="non-scaling-stroke"/>` : '';
+    });
+    stage.insertAdjacentHTML('beforeend', `<svg class="route-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines.join('')}</svg>`);
   }
   for (const c of data.courses) {
     const el = document.createElement('div');
