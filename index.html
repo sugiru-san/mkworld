@@ -135,6 +135,10 @@
   .rank-actions .undo { background: none; color: var(--muted); font-size: 13px; }
   .rank-pad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
   .rank-pad button { min-height: 44px; padding: 0; font-weight: 900; font-size: 16px; }
+  /* タップで編集に入れる項目 */
+  .field[data-edit] { cursor: pointer; border-radius: 10px; margin-left: -8px; margin-right: -8px; padding: 4px 8px; }
+  .field[data-edit]:active { background: var(--pit-high); }
+  .style-tap { background: none; padding: 0 1px; font: inherit; color: inherit; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
   input[type=text], input[type=search], input[type=password], textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px;
@@ -236,7 +240,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01l';
+const APP_VERSION = '2026-11-01m';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -809,7 +813,7 @@ function renderList() {
 }
 
 // ---------- メモの表示・編集シート ----------
-function openNote(t, asEdit = false) {
+function openNote(t, asEdit = false, focusField = null) {
   const course = t.type === 'course' ? data.courses.find(c => c.id === t.id) : null;
   if (t.type === 'course' && !course) return;
   const sheet = $('noteSheet');
@@ -825,7 +829,7 @@ function openNote(t, asEdit = false) {
     const st = styleHtml(parseStyle(notes), true);
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       // 見出しは付けず、未入力のときは空の☆を薄く出す
-      `<div class="field"><div class="body ${st ? '' : 'blank'}">${st || '<span class="style-end">前張り</span><span class="style big"><span class="off">☆☆☆☆☆</span></span><span class="style-end">打開</span>'}</div></div>` +
+      '<div class="field"><div class="body" id="styleView"></div></div>' +
       '<div class="field" id="rankBox"></div>' +
       data.fields.map(f => {
       if (f === SC_FIELD) {
@@ -834,25 +838,46 @@ function openNote(t, asEdit = false) {
           const pos = scPosText(x);
           return `<div class="sc-item"><div class="body">${pos ? `<span class="pos">${esc(pos)}</span>` : ''}${x.text ? `<div class="${pos ? 'memo' : ''}">${linkify(x.text)}</div>` : ''}</div>${scHtml(x.need, true)}</div>`;
         }).join('');
-        return `<div class="field"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
+        return `<div class="field" data-edit="${esc(f)}"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
       if (POINT_PICKS[f]) {
         const pos = scPosText(getPick(notes, f));
-        if (pos) return `<div class="field"><div class="name">${fieldLabel(f)}</div><div class="sc-item"><div class="body"><span class="pos">${esc(pos)}</span>${v ? `<div class="memo">${linkify(v)}</div>` : ''}</div></div></div>`;
+        if (pos) return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="sc-item"><div class="body"><span class="pos">${esc(pos)}</span>${v ? `<div class="memo">${linkify(v)}</div>` : ''}</div></div></div>`;
       }
-      return `<div class="field"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : '（未入力）'}</div></div>`;
+      return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : 'タップして入力'}</div></div>`;
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
     renderRank(t);
     $('toEdit').onclick = () => openNote(t, true);
+    // 項目をタップしたら、その項目を編集する画面へ（リンクのタップはそのまま開く）
+    sheet.querySelectorAll('[data-edit]').forEach(el => el.onclick = e => {
+      if (e.target.closest('a')) return;
+      openNote(t, true, el.dataset.edit);
+    });
+    // ★をその場でタップして保存
+    const drawStyleView = () => {
+      const lv = parseStyle(getNotes(t));
+      $('styleView').innerHTML = '<span class="style-end">前張り</span><span class="style big">' +
+        [1, 2, 3, 4, 5].map(i => `<button class="style-tap${i <= lv ? '' : ' off'}" data-lv="${i}" aria-label="★${i}">${i <= lv ? '★' : '☆'}</button>`).join('') +
+        '</span><span class="style-end">打開</span>';
+      $('styleView').querySelectorAll('[data-lv]').forEach(b => b.onclick = () => {
+        const v = +b.dataset.lv === lv ? 0 : +b.dataset.lv;
+        setNotes(t, { ...getNotes(t), [STYLE_KEY]: v ? String(v) : '', [OLD_STYLE_KEY]: '', '前張り/打開': '' });
+        saveData();
+        renderList();
+        drawStyleView();
+        toast(v ? `★${v}にしました` : '★を外しました');
+      });
+    };
+    drawStyleView();
     $('closeN').onclick = closeNote;
   } else {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
-      data.fields.map((f, i) => `<div class="field"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
+      data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
@@ -964,6 +989,15 @@ function openNote(t, asEdit = false) {
   if (parentCourse) $('backBtn').onclick = () => openNote({ type: 'course', id: parentCourse.id });
   $('noteBg').classList.add('open');
   sheet.scrollTop = 0;
+  if (asEdit && focusField) {
+    const el = [...sheet.querySelectorAll('[data-field]')].find(x => x.dataset.field === focusField);
+    if (el) {
+      el.scrollIntoView({ block: 'start' });
+      const ta = el.querySelector('textarea');
+      // 選択式の項目はボタンを押すことが多いので、文章だけの項目のときにキーボードを出す
+      if (ta && !el.querySelector('.sc-pick, #scList')) ta.focus();
+    }
+  }
 }
 
 // 平均順位の欄。「＋ 順位を記録」で1〜24位のボタンを出し、タップで記録する
