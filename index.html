@@ -54,6 +54,23 @@
   .spot.view:active { background: rgba(255, 194, 26, .35); border-color: var(--coin); }
   .spot.view .label { display: none; }
   body.showLabels .spot.view .label { display: block; }
+  /* マップの「コース / 道中」切り替え */
+  .map-mode { display: flex; align-items: center; gap: 10px; margin: 2px 0 8px; }
+  .map-mode .seg { display: flex; background: var(--pit); border-radius: 10px; padding: 3px; flex-shrink: 0; }
+  .map-mode .seg button { background: none; color: var(--muted); font-weight: 700; padding: 6px 14px; border-radius: 8px; }
+  .map-mode .seg button.on { background: var(--pit-high); color: var(--curb-white); }
+  #routeHint { font-size: 13px; color: var(--muted); font-weight: 700; min-width: 0; }
+  #routeHint b { color: var(--curb-white); }
+  /* 道中モード：出発は黄、行き先は青、それ以外は暗く */
+  .spot.from { border: 3px solid var(--coin); background: rgba(255, 194, 26, .22); }
+  .spot.to { border: 2px solid var(--item-blue); background: rgba(54, 169, 225, .22); }
+  .spot.dim { background: rgba(20, 22, 28, .55); }
+  /* 行き先の名前はマップの下にボタンで並べる（マップ上だと小さい画面で読めないため） */
+  .route-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .route-chips:empty { display: none; }
+  .route-chips button { background: var(--pit-high); font-weight: 700; font-size: 14px; padding: 8px 12px; border-left: 3px solid var(--item-blue); }
+  .route-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .route-lines line { stroke: var(--item-blue); stroke-width: 2.5; stroke-linecap: round; opacity: .9; }
   .spot.edit { border: 2px solid var(--coin); background: rgba(255, 194, 26, .2); touch-action: none; }
   /* 周回・道中・SFC の切り替え：選んでいる方の下にセンターライン */
   .tabs { display: flex; gap: 4px; margin: 14px 0 10px; background: var(--pit); border-radius: 12px; padding: 4px; }
@@ -207,7 +224,12 @@
 <div id="ptr"><span class="arrow">↓</span><span id="ptrText">引っぱって更新</span></div>
 <main>
   <p class="hint" id="hint"></p>
+  <div class="map-mode">
+    <div class="seg"><button data-mode="course">コース</button><button data-mode="route">道中</button></div>
+    <span id="routeHint"></span>
+  </div>
   <div id="stage"></div>
+  <div class="route-chips" id="routeChips"></div>
   <div class="tabs">
     <button data-tab="course">周回 30</button>
     <button data-tab="route">道中 202</button>
@@ -259,7 +281,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02c';
+const APP_VERSION = '2026-11-02d';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -785,8 +807,41 @@ function render() {
   $('hint').textContent = editMode ? '編集モード：枠はドラッグで移動／枠をタップで内容を編集' : '';
   $('hint').hidden = !editMode;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  renderRouteHint();
   renderStage();
   renderList();
+}
+
+// マップのモード：'course'＝コースを開く、'route'＝出発→到着の順にタップして道中を開く
+let mapMode = 'course';
+let routeFrom = null;  // 道中モードで選んだ出発コースの key
+const routeDests = from => ROUTES.filter(r => r[0] === from).map(r => r[1]);
+function renderRouteHint() {
+  document.querySelectorAll('.map-mode .seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === mapMode));
+  $('routeHint').innerHTML = mapMode !== 'route' || editMode ? ''
+    : routeFrom ? `<b>${esc(displayName(routeFrom))}</b> から行き先を選ぶ（${routeDests(routeFrom).length}本）`
+    : '出発するコースをタップ';
+  // 行き先のボタン（タップでその道中のメモを開く）
+  const chips = $('routeChips');
+  chips.innerHTML = '';
+  if (mapMode === 'route' && !editMode && routeFrom) {
+    for (const to of routeDests(routeFrom)) {
+      const b = document.createElement('button');
+      b.innerHTML = `→ ${nameHtml(displayName(to))}`;
+      b.onclick = () => openNote({ type: 'route', from: routeFrom, to });
+      chips.appendChild(b);
+    }
+  }
+}
+function tapSpotForRoute(c) {
+  const key = c.key || c.name;
+  if (routeFrom && routeDests(routeFrom).includes(key)) {
+    openNote({ type: 'route', from: routeFrom, to: key });  // 2タップ目：その道中のメモを開く
+    return;
+  }
+  routeFrom = routeFrom === key ? null : key;  // 出発を選ぶ／同じ所をもう一度で解除
+  renderStage();
+  renderRouteHint();
 }
 
 function renderStage() {
@@ -808,13 +863,24 @@ function renderStage() {
   img.draggable = false;
   stage.appendChild(img);
 
+  const routing = mapMode === 'route' && !editMode;
+  const dests = routing && routeFrom ? routeDests(routeFrom) : [];
+  // 出発から行き先へ線を引く
+  if (dests.length) {
+    const center = key => { const c = courseByKey(key); return c ? [c.x + c.w / 2, c.y + c.h / 2] : null; };
+    const [fx, fy] = center(routeFrom) || [0, 0];
+    stage.insertAdjacentHTML('beforeend', `<svg class="route-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${
+      dests.map(center).filter(Boolean).map(([x, y]) => `<line x1="${fx}" y1="${fy}" x2="${x}" y2="${y}" vector-effect="non-scaling-stroke"/>`).join('')}</svg>`);
+  }
   for (const c of data.courses) {
     const el = document.createElement('div');
-    el.className = 'spot ' + (editMode ? 'edit' : 'view');
+    const key = c.key || c.name;
+    el.className = 'spot ' + (editMode ? 'edit' : 'view') +
+      (!routing || !routeFrom ? '' : key === routeFrom ? ' from' : dests.includes(key) ? ' to' : ' dim');
     Object.assign(el.style, { left: c.x + '%', top: c.y + '%', width: c.w + '%', height: c.h + '%' });
     el.innerHTML = `<span class="label">${nameHtml(c.name)}</span>`;
     if (editMode) enableDrag(el, c);
-    else el.onclick = e => { e.stopPropagation(); openNote({ type: 'course', id: c.id }); };
+    else el.onclick = e => { e.stopPropagation(); routing ? tapSpotForRoute(c) : openNote({ type: 'course', id: c.id }); };
     stage.appendChild(el);
   }
 
@@ -1208,6 +1274,13 @@ document.addEventListener('keydown', e => {
     else return;
     e.preventDefault();
   }
+});
+
+// ---------- マップのモード切り替え ----------
+document.querySelectorAll('.map-mode .seg button').forEach(b => b.onclick = () => {
+  mapMode = b.dataset.mode;
+  routeFrom = null;
+  render();
 });
 
 // ---------- 一覧のタブ・検索 ----------
