@@ -292,7 +292,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02h';
+const APP_VERSION = '2026-11-02i';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -690,13 +690,14 @@ const nameHtml = s => esc(s).replace(NAME_BREAK_RE, m => NAME_BREAK_MAP[m]);
 const SC_FIELD = '主要SC';
 const SC_LIST_KEY = '主要SCリスト';
 const SC_KEY = '主要SC必要数';  // 1件だけだった頃の保存先（読み込み時にリストへ変換）
-const SC_OPTIONS = ['1', '2', '3', '金'];
+const SC_OPTIONS = ['1', '2', '3', '金', 'ハネ'];  // キノコ1〜3個・金キノ・ハネ
 function scHtml(v, big = false) {
   if (!SC_OPTIONS.includes(v)) return '';
-  const imgs = v === '金' ? '<img src="golden.png" alt="金キノ">'
+  const imgs = v === 'ハネ' ? '<img src="feather.png" alt="ハネ">'
+    : v === '金' ? '<img src="golden.png" alt="金キノ">'
     : v === '3' ? '<img src="mushroom3.png" alt="トリプルキノコ">'
     : '<img src="mushroom.png" alt="キノコ">'.repeat(+v);
-  return `<span class="sc${big ? ' big' : ''}" title="${v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
+  return `<span class="sc${big ? ' big' : ''}" title="${v === 'ハネ' ? 'ハネ' : v === '金' ? '金キノ' : `キノコ${v}個`}">${imgs}</span>`;
 }
 
 // SCの位置の選択肢
@@ -1115,7 +1116,7 @@ function openNote(t, asEdit = false, focusField = null) {
             ${pickRow(i, 'box', 'アイテム', SC_BOXES[t.type])}
             ${pickRow(i, 'fb', '前後', SC_SIDES_FB)}
             ${pickRow(i, 'lr', '左右', SC_SIDES_LR)}
-            ${pickRow(i, 'need', 'キノコ', SC_OPTIONS, v => scHtml(v))}
+            ${pickRow(i, 'need', '必要', SC_OPTIONS, v => scHtml(v))}
           </div>
           <textarea data-sc-text="${i}" placeholder="補足（任意）">${esc(x.text)}</textarea>
         </div>`).join('');
