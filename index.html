@@ -178,6 +178,9 @@
   .tok { height: 1.5em; vertical-align: -0.35em; margin: 0 1px; }
   /* 定型の言葉をタップで入れるボタン */
   .tpl { margin-top: 8px; display: grid; gap: 6px; }
+  .tachi-preview { white-space: pre-wrap; line-height: 1.8; word-break: break-word; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
+    border: 1px dashed var(--pit-high); font-size: 15px; }
+  .tachi-preview:empty { display: none; }
   .tpl .opts { display: flex; flex-wrap: wrap; gap: 5px; }
   .tpl button { background: var(--pit-high); color: var(--curb-white); font-weight: 700; font-size: 14px; min-height: 38px; padding: 4px 10px;
     display: inline-flex; align-items: center; gap: 2px; }
@@ -301,7 +304,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02l';
+const APP_VERSION = '2026-11-02m';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -487,7 +490,7 @@ function mergeData(a, b) {
   return {
     image: s.image, fields: s.fields, showLabels: s.showLabels, settingsU: s.settingsU || 0,
     layoutVersion: Math.max(a.layoutVersion || 1, b.layoutVersion || 1),
-    courses, tomb, extra, extraU, pristine: false,
+    courses, tomb, extra, extraU, pristine: false, noSpaceV1: !!(a.noSpaceV1 || b.noSpaceV1),
   };
 }
 
@@ -842,8 +845,8 @@ const NEED_WORD = { 1: 'キノ1', 2: 'キノ2', 3: 'キノ3', '金': '金キノ'
 function mergeIntoTachimawari(notes) {
   if (!notes) return false;
   const lines = [];
-  for (const x of getScList(notes)) lines.push(['SC', scPosText(x), NEED_WORD[x.need] || '', x.text || ''].filter(Boolean).join(' '));
-  for (const x of getKillerList(notes)) lines.push(['キラー', scPosText(x), x.text || ''].filter(Boolean).join(' '));
+  for (const x of getScList(notes)) lines.push(['SC', scPosText(x).replace(/[ 、]/g, ''), NEED_WORD[x.need] || '', x.text || ''].filter(Boolean).join(''));
+  for (const x of getKillerList(notes)) lines.push(['キラー', scPosText(x).replace(/[ 、]/g, ''), x.text || ''].filter(Boolean).join(''));
   const had = [SC_LIST_KEY, SC_KEY, SC_FIELD, KILLER_LIST_KEY, KILLER_FIELD, POINT_PICKS[KILLER_FIELD].key].some(k => String(notes[k] || '').trim());
   if (!had) return false;
   const cur = (notes['立ち回り'] || '').trim();
@@ -853,12 +856,30 @@ function mergeIntoTachimawari(notes) {
   return true;
 }
 // 保存データ全体をまとめた形にする（項目の並びも新しくする）
+// サンダーの番号：道中は5〜10、周回・SFCはアイテムと同じ
+const THUNDER_BOXES = { ...SC_BOXES, route: ['5', '6', '7', '8', '9', '10'] };
+
 function upgradeMerged(d) {
   let changed = false;
   if (JSON.stringify(d.fields) === JSON.stringify(SPLIT_FIELDS)) { d.fields = DEFAULT_FIELDS.slice(); d.settingsU = Date.now(); changed = true; }
   const now = Date.now();
   for (const c of d.courses) if (mergeIntoTachimawari(c.notes)) { c.u = now; changed = true; }
   for (const [k, n] of Object.entries(d.extra || {})) if (mergeIntoTachimawari(n)) { d.extraU[k] = now; changed = true; }
+  // 1回だけ：前に「SC 2-3後 右側 キノ2」のように空白入りで移した行を、空白なしにする
+  if (!d.noSpaceV1) {
+    const fix = n => {
+      const v = n?.['立ち回り'];
+      if (!v) return false;
+      const next = v.split('\n').map(l => /^(SC|キラー) /.test(l) ? l.replace(/[ 　]/g, '') : l).join('\n');
+      if (next === v) return false;
+      n['立ち回り'] = next;
+      return true;
+    };
+    for (const c of d.courses) if (fix(c.notes)) c.u = now;
+    for (const [k, n] of Object.entries(d.extra || {})) if (fix(n)) d.extraU[k] = now;
+    d.noSpaceV1 = true;
+    changed = true;
+  }
   return changed;
 }
 
@@ -1136,7 +1157,7 @@ function openNote(t, asEdit = false, focusField = null) {
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : f === KILLER_FIELD ? '<div id="killerList"></div><button class="sc-add" id="killerAdd">＋ キラーを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
-        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea>${tplHtml(t.type)}`
+        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(t.type)}`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
@@ -1239,7 +1260,13 @@ function openNote(t, asEdit = false, focusField = null) {
       $('killerList').lastElementChild.scrollIntoView({ block: 'nearest' });
     };
 
-    if ($('tachiInput')) bindTpl($('tachiInput').parentElement, $('tachiInput'));
+    if ($('tachiInput')) {
+      bindTpl($('tachiInput').parentElement, $('tachiInput'));
+      // 入力欄の中は画像を出せないので、すぐ下にアイコン入りの見え方を出す
+      const preview = () => { $('tachiPreview').innerHTML = $('tachiInput').value.trim() ? richText($('tachiInput').value) : ''; };
+      $('tachiInput').addEventListener('input', preview);
+      preview();
+    }
 
     // サンダーポイントの選択ボタン（選んでいるボタンをもう一度タップすると外す）
     const picks = {};
@@ -1249,7 +1276,7 @@ function openNote(t, asEdit = false, focusField = null) {
       const draw = () => {
         const row = (key, label, values) => `<div class="lbl">${label}</div><div class="opts">${values.map(v =>
           `<button class="${picks[f][key] === v ? 'on' : ''}" data-key="${key}" data-v="${v}">${esc(v)}</button>`).join('')}</div>`;
-        box.innerHTML = row('box', 'アイテム', SC_BOXES[t.type]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
+        box.innerHTML = row('box', 'アイテム', THUNDER_BOXES[t.type]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
         box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
           const k = b.dataset.key;
           picks[f][k] = picks[f][k] === b.dataset.v ? '' : b.dataset.v;
@@ -1321,7 +1348,7 @@ function renderThunder(t, padOpen = false) {
     `<div class="thunder-head">${dist.length
       ? `<div class="thunder-dist">${dist.map(([b, n], i) => `<span class="${i === 0 ? 'top' : ''}">${esc(b)}<small>${Math.round(n / log.length * 100)}%</small></span>`).join('')}</div>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
-    (padOpen ? `<div class="thunder-pad">${SC_BOXES[t.type].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
+    (padOpen ? `<div class="thunder-pad">${THUNDER_BOXES[t.type].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
   const save = next => {
     setNotes(t, { ...getNotes(t), [THUNDER_LOG_KEY]: next.length ? JSON.stringify(next) : '' });
     saveData();
