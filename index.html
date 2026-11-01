@@ -179,6 +179,14 @@
   #stage.loading img, #stage.loading .spot { visibility: hidden; }
   .grid .skel { height: 58px; }
   @media (prefers-reduced-motion: reduce) { .skel { animation: none; } #toast { transition: none; } }
+  /* メニューの入力状況 */
+  .progress { background: var(--asphalt); border-radius: 12px; padding: 12px 14px; margin: 4px 0 10px; }
+  .progress .total { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  .progress .total b { font-size: 26px; font-weight: 900; }
+  .progress .row2 { display: grid; grid-template-columns: 3.5em 1fr 5.5em; align-items: center; gap: 8px; font-size: 13px; margin-top: 6px; }
+  .progress .bar { height: 8px; border-radius: 4px; background: var(--pit-high); overflow: hidden; }
+  .progress .bar i { display: block; height: 100%; background: var(--item-blue); }
+  .progress .num { text-align: right; color: var(--muted); font-weight: 700; }
   .menu button { display: block; width: 100%; margin-bottom: 8px; text-align: left; background: var(--pit-high); color: var(--curb-white); }
 </style>
 </head>
@@ -218,6 +226,7 @@
   <button id="mPaste">📋 メモを貼り付けて追加</button>
   <button id="mImport">⬆ データを読み込み（ファイル）</button>
   <button class="danger" id="mClose">閉じる</button>
+  <div id="progress" class="progress"></div>
   <p class="hint" id="appVersion"></p>
 </div></div>
 
@@ -246,7 +255,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01y';
+const APP_VERSION = '2026-11-01z';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -337,6 +346,23 @@ function migrate(d) {
     d.courses.forEach(c => { toCutPct(c); c.u = now; });
     d.image = 'map_cut.jpg';
     d.settingsU = now;
+  }
+
+  // 同じコースの枠が2つ以上あるときは1つにまとめる（メモが入っている方・新しい方を残し、メモは合わせる）
+  const byKey = {};
+  for (const c of d.courses) if (c.key) (byKey[c.key] = byKey[c.key] || []).push(c);
+  const nowDup = Date.now();
+  for (const list of Object.values(byKey)) {
+    if (list.length < 2) continue;
+    const filled = c => Object.values(c.notes || {}).filter(v => String(v).trim()).length;
+    list.sort((a, b) => filled(b) - filled(a) || (b.u || 0) - (a.u || 0));
+    const keep = list[0];
+    for (const extra of list.slice(1)) {
+      for (const [k, v] of Object.entries(extra.notes || {})) if (String(v).trim() && !String(keep.notes[k] || '').trim()) keep.notes[k] = v;
+      d.courses = d.courses.filter(c => c !== extra);
+      d.tomb[extra.id] = nowDup;
+    }
+    keep.u = nowDup + 1;
   }
 
   // 削除されたコース枠を初期位置に戻す（コースは増減しないため、30コースは常にそろえる）
@@ -1196,7 +1222,19 @@ $('search').oninput = renderList;
 
 // ---------- ヘッダー・メニュー ----------
 $('modeBtn').onclick = () => { editMode = !editMode; render(); };
-$('menuBtn').onclick = () => { $('labelState').textContent = data.showLabels ? 'ON' : 'OFF'; $('menuBg').classList.add('open'); };
+// 入力済み＝順位の記録以外に何か入っているコース
+const hasMemo = t => Object.entries(getNotes(t)).some(([k, v]) => k !== RANK_KEY && String(v).trim());
+function renderProgress() {
+  const groups = [
+    ['周回', data.courses.filter(c => OFFICIAL_NAMES.includes(c.key)).map(c => ({ type: 'course', id: c.id }))],
+    ['道中', ROUTES.map(([from, to]) => ({ type: 'route', from, to }))],
+    ['SFC', Object.values(SFC_COURSES).flat().map(name => ({ type: 'sfc', name }))],
+  ].map(([label, ts]) => [label, ts.filter(hasMemo).length, ts.length]);
+  const done = groups.reduce((a, g) => a + g[1], 0), all = groups.reduce((a, g) => a + g[2], 0);
+  $('progress').innerHTML = `<div class="total">入力済み <b>${done}</b> / ${all} コース</div>` +
+    groups.map(([label, n, total]) => `<div class="row2"><span>${label}</span><span class="bar"><i style="width:${total ? n / total * 100 : 0}%"></i></span><span class="num">${n} / ${total}</span></div>`).join('');
+}
+$('menuBtn').onclick = () => { $('labelState').textContent = data.showLabels ? 'ON' : 'OFF'; renderProgress(); $('menuBg').classList.add('open'); };
 const closeMenu = () => $('menuBg').classList.remove('open');
 $('mClose').onclick = closeMenu;
 $('menuBg').onclick = e => { if (e.target.id === 'menuBg') closeMenu(); };
@@ -1323,9 +1361,14 @@ $('sOff').onclick = () => {
 // ---------- メモの追加取り込み ----------
 // 形式：{ "type": "mkworld-patch", "notes": [ { "kind": "course"|"route"|"sfc", "course"|"from","to"|"name", "set": {項目: 値}, "sc": [SC] } ] }
 // 立ち回りなどの文章は、すでに書いてあれば改行して後ろに足す。SCは今あるSCの後ろに足す
+// d.mode === 'replace' のときは、取り込むコースの 立ち回り・主要SC・キラー・サンダー を一度空にしてから入れる
+// （同じファイルを直して読み込み直しても、古い書き方が残らないように。★・道の長さ・順位の記録はそのまま）
+const PATCH_CLEAR_KEYS = () => [...data.fields, SC_LIST_KEY, SC_KEY, KILLER_LIST_KEY,
+  POINT_PICKS[KILLER_FIELD].key, POINT_PICKS['サンダーポイント'].key];
 function applyPatch(d) {
   let count = 0;
   const missing = [];
+  const cleared = new Set();
   for (const n of d.notes || []) {
     let t = null;
     if (n.kind === 'course') { const c = courseByKey(n.course); if (c) t = { type: 'course', id: c.id }; }
@@ -1333,6 +1376,11 @@ function applyPatch(d) {
     else if (n.kind === 'sfc' && sfcParent(n.name)) t = { type: 'sfc', name: n.name };
     if (!t) { missing.push(n.course || n.name || `${n.from}→${n.to}`); continue; }
     const notes = { ...getNotes(t) };
+    const tKey = JSON.stringify(t);
+    if (d.mode === 'replace' && !cleared.has(tKey)) {
+      PATCH_CLEAR_KEYS().forEach(k => { notes[k] = ''; });
+      cleared.add(tKey);
+    }
     // キラー：n.killer（[{box, fb, text}]）と、set のキラーポイントの文章（1行＝1件）をリストに足す
     const killerAdds = [...(n.killer || []),
       ...String(n.set?.[KILLER_FIELD] || '').split('\n').map(x => x.trim()).filter(Boolean).map(text => ({ text }))];
@@ -1366,7 +1414,7 @@ function applyPatch(d) {
   }
   saveData();
   render();
-  toast(`${count} コースにメモを追加しました`);
+  toast(d.mode === 'replace' ? `${cleared.size} コースのメモを入れ直しました` : `${count} コースにメモを追加しました`);
   if (missing.length) alert(`次のコースは見つからなかったので、追加していません：\n${missing.join('\n')}`);
 }
 
