@@ -61,10 +61,9 @@
   .map-mode .seg button.on { background: var(--pit-high); color: var(--curb-white); }
   #routeHint { font-size: 13px; color: var(--muted); font-weight: 700; min-width: 0; }
   #routeHint b { color: var(--curb-white); }
-  /* 道中モード：出発は黄、行き先は青、それ以外は暗く */
+  /* 道中モード：出発は黄、行き先は青（それ以外はそのまま） */
   .spot.from { border: 3px solid var(--coin); background: rgba(255, 194, 26, .22); }
   .spot.to { border: 2px solid var(--item-blue); background: rgba(54, 169, 225, .22); }
-  .spot.dim { background: rgba(20, 22, 28, .55); }
   /* 行き先の名前はマップの下にボタンで並べる（マップ上だと小さい画面で読めないため） */
   .route-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .route-chips:empty { display: none; }
@@ -281,7 +280,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02e';
+const APP_VERSION = '2026-11-02f';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -884,7 +883,7 @@ function renderStage() {
     const el = document.createElement('div');
     const key = c.key || c.name;
     el.className = 'spot ' + (editMode ? 'edit' : 'view') +
-      (!routing || !routeFrom ? '' : key === routeFrom ? ' from' : dests.includes(key) ? ' to' : ' dim');
+      (!routing || !routeFrom ? '' : key === routeFrom ? ' from' : dests.includes(key) ? ' to' : '');
     Object.assign(el.style, { left: c.x + '%', top: c.y + '%', width: c.w + '%', height: c.h + '%' });
     el.innerHTML = `<span class="label">${nameHtml(c.name)}</span>`;
     if (editMode) enableDrag(el, c);
