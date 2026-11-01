@@ -215,7 +215,8 @@
   <button id="mFields">📝 メモ項目を編集</button>
   <button id="mPreset">📍 マップとコース枠を初期配置に戻す</button>
   <button id="mExport">⬇ データを書き出し（バックアップ）</button>
-  <button id="mImport">⬆ データを読み込み</button>
+  <button id="mPaste">📋 メモを貼り付けて追加</button>
+  <button id="mImport">⬆ データを読み込み（ファイル）</button>
   <button class="danger" id="mClose">閉じる</button>
   <p class="hint" id="appVersion"></p>
 </div></div>
@@ -245,7 +246,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01w';
+const APP_VERSION = '2026-11-01x';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -1262,6 +1263,56 @@ $('sOff').onclick = () => {
   toast('同期を解除しました');
 };
 
+// ---------- メモの追加取り込み ----------
+// 形式：{ "type": "mkworld-patch", "notes": [ { "kind": "course"|"route"|"sfc", "course"|"from","to"|"name", "set": {項目: 値}, "sc": [SC] } ] }
+// 立ち回りなどの文章は、すでに書いてあれば改行して後ろに足す。SCは今あるSCの後ろに足す
+function applyPatch(d) {
+  let count = 0;
+  const missing = [];
+  for (const n of d.notes || []) {
+    let t = null;
+    if (n.kind === 'course') { const c = courseByKey(n.course); if (c) t = { type: 'course', id: c.id }; }
+    else if (n.kind === 'route' && ROUTES.some(r => r[0] === n.from && r[1] === n.to)) t = { type: 'route', from: n.from, to: n.to };
+    else if (n.kind === 'sfc' && sfcParent(n.name)) t = { type: 'sfc', name: n.name };
+    if (!t) { missing.push(n.course || n.name || `${n.from}→${n.to}`); continue; }
+    const notes = { ...getNotes(t) };
+    for (const [k, v] of Object.entries(n.set || {})) {
+      const cur = (notes[k] || '').trim();
+      const isText = data.fields.includes(k);
+      notes[k] = isText && cur && !cur.includes(v) ? `${cur}\n${v}` : (isText && cur.includes(v) ? cur : String(v));
+    }
+    if (n.sc?.length) {
+      const list = getScList(notes);
+      for (const x of n.sc) {
+        if (!list.some(y => JSON.stringify(y) === JSON.stringify({ box: '', fb: '', lr: '', need: '', text: '', ...x }))) {
+          list.push({ box: '', fb: '', lr: '', need: '', text: '', ...x });
+        }
+      }
+      notes[SC_LIST_KEY] = JSON.stringify(list);
+      notes[SC_FIELD] = ''; notes[SC_KEY] = '';
+    }
+    setNotes(t, notes);
+    count++;
+  }
+  saveData();
+  render();
+  toast(`${count} コースにメモを追加しました`);
+  if (missing.length) alert(`次のコースは見つからなかったので、追加していません：\n${missing.join('\n')}`);
+}
+
+$('mPaste').onclick = () => {
+  const text = prompt('追加するメモ（mkworld-patch の文字列）を貼り付けてください');
+  if (!text) return;
+  try {
+    const d = JSON.parse(text);
+    if (d.type !== 'mkworld-patch') throw new Error('not a patch');
+    closeMenu();
+    applyPatch(d);
+  } catch (err) {
+    alert('取り込めませんでした。受け取った文字列を全部そのまま貼り付けてください。');
+  }
+};
+
 $('mImport').onclick = () => $('importFile').click();
 $('importFile').onchange = e => {
   const file = e.target.files[0];
@@ -1271,6 +1322,7 @@ $('importFile').onchange = e => {
   reader.onload = () => {
     try {
       const d = JSON.parse(reader.result);
+      if (d.type === 'mkworld-patch') { closeMenu(); applyPatch(d); return; }
       if (!Array.isArray(d.courses) || !Array.isArray(d.fields)) throw new Error('invalid format');
       if (!confirm(`${d.courses.length} コース分のデータを読み込みます。今のデータは上書きされます。よろしいですか？`)) return;
       data = migrate(d);
