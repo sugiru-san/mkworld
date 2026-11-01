@@ -166,6 +166,14 @@
   .meter button.on { background: var(--item-blue); }
   .meter-wrap { display: flex; align-items: center; min-height: 44px; }
   .style-tap { background: none; padding: 0 1px; font: inherit; color: inherit; }
+  /* サンダー履歴 */
+  .thunder-head { display: flex; align-items: center; gap: 10px; }
+  .thunder-dist { display: flex; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+  .thunder-dist span { font-weight: 900; font-size: 18px; white-space: nowrap; }
+  .thunder-dist span small { font-size: 13px; color: var(--muted); font-weight: 700; margin-left: 3px; }
+  .thunder-dist span.top { color: var(--coin); }
+  .thunder-pad { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .thunder-pad button { min-width: 52px; min-height: 44px; font-weight: 900; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
   input[type=text], input[type=search], input[type=password], textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px;
@@ -284,7 +292,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02g';
+const APP_VERSION = '2026-11-02h';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -753,6 +761,12 @@ function getPick(notes, f) {
 
 // 平均順位：notes['順位記録'] に順位の配列のJSON文字列で保存（古い順）
 const RANK_KEY = '順位記録';
+// サンダーが降った位置の履歴：notes['サンダー記録'] にアイテム番号の配列のJSON文字列で保存（古い順）
+const THUNDER_LOG_KEY = 'サンダー記録';
+function getThunderLog(notes) {
+  try { const a = JSON.parse(notes?.[THUNDER_LOG_KEY] || '[]'); return Array.isArray(a) ? a.map(String) : []; }
+  catch (e) { console.error(e); return []; }
+}
 const RANK_MAX = 24;
 function getRanks(notes) {
   try {
@@ -990,10 +1004,11 @@ function openNote(t, asEdit = false, focusField = null) {
         if (pos) return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="sc-item"><div class="body"><span class="pos">${esc(pos)}</span>${v ? `<div class="memo">${linkify(v)}</div>` : ''}</div></div></div>`;
       }
       return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : 'タップして入力'}</div></div>`;
-    }).join('') + '<div id="related"></div>' +
+    }).map((html, i) => data.fields[i] === 'サンダーポイント' ? html + '<div class="field" id="thunderBox"></div>' : html).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
     renderRank(t);
+    renderThunder(t);
     $('toEdit').onclick = () => openNote(t, true);
     // 項目をタップしたら、その項目を編集する画面へ（リンクのタップはそのまま開く）
     sheet.querySelectorAll('[data-edit]').forEach(el => el.onclick = e => {
@@ -1191,8 +1206,8 @@ function openNote(t, asEdit = false, focusField = null) {
     };
     $('delN').onclick = () => {
       // 枠は消さず、メモだけ消す
-      if (!confirm('このコースのメモを消しますか？（順位の記録は残ります）')) return;
-      setNotes(t, { [RANK_KEY]: notes[RANK_KEY] || '' });
+      if (!confirm('このコースのメモを消しますか？（順位とサンダーの記録は残ります）')) return;
+      setNotes(t, { [RANK_KEY]: notes[RANK_KEY] || '', [THUNDER_LOG_KEY]: notes[THUNDER_LOG_KEY] || '' });
       saveData();
       render();
       openNote(t, false);
@@ -1214,6 +1229,38 @@ function openNote(t, asEdit = false, focusField = null) {
 }
 
 // 平均順位の欄。「＋ 順位を記録」で1〜24位のボタンを出し、タップで記録する
+// サンダー履歴の欄。「＋ 記録」でアイテム番号のボタンを出し、降った位置をタップで記録する
+function renderThunder(t, padOpen = false) {
+  const box = $('thunderBox');
+  if (!box) return;
+  const log = getThunderLog(getNotes(t));
+  // 多い順に「番号 割合」を並べる
+  const counts = {};
+  log.forEach(b => { counts[b] = (counts[b] || 0) + 1; });
+  const dist = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const actions = `<span class="rank-actions">${log.length ? '<button class="undo" id="thunderUndo">取り消し</button>' : ''}<button id="thunderAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
+  box.innerHTML = `<div class="name"><img class="field-icon" src="thunder.png" alt="サンダー">履歴${log.length ? `（${log.length}回）` : ''}</div>` +
+    `<div class="thunder-head">${dist.length
+      ? `<div class="thunder-dist">${dist.map(([b, n], i) => `<span class="${i === 0 ? 'top' : ''}">${esc(b)}<small>${Math.round(n / log.length * 100)}%</small></span>`).join('')}</div>`
+      : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
+    (padOpen ? `<div class="thunder-pad">${SC_BOXES[t.type].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
+  const save = next => {
+    setNotes(t, { ...getNotes(t), [THUNDER_LOG_KEY]: next.length ? JSON.stringify(next) : '' });
+    saveData();
+  };
+  $('thunderAdd').onclick = () => renderThunder(t, !padOpen);
+  if ($('thunderUndo')) $('thunderUndo').onclick = () => {
+    save(log.slice(0, -1));
+    renderThunder(t, padOpen);
+    toast(`${log[log.length - 1]} の記録を取り消しました`);
+  };
+  box.querySelectorAll('[data-box]').forEach(b => b.onclick = () => {
+    save([...log, b.dataset.box]);
+    renderThunder(t, false);
+    toast(`サンダー ${b.dataset.box} を記録しました`);
+  });
+}
+
 function renderRank(t, padOpen = false) {
   const box = $('rankBox');
   if (!box) return;
@@ -1302,7 +1349,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab =
 // ---------- ヘッダー・メニュー ----------
 $('modeBtn').onclick = () => { editMode = !editMode; render(); };
 // 入力済み＝順位の記録以外に何か入っているコース
-const hasMemo = t => Object.entries(getNotes(t)).some(([k, v]) => k !== RANK_KEY && String(v).trim());
+const hasMemo = t => Object.entries(getNotes(t)).some(([k, v]) => k !== RANK_KEY && k !== THUNDER_LOG_KEY && String(v).trim());
 function renderProgress() {
   // 周回は正式名30コースで数える（同じコースの枠が複数あっても、どれかにメモがあれば1コース）
   const courseDone = OFFICIAL_NAMES.filter(key => data.courses.some(c => c.key === key && hasMemo({ type: 'course', id: c.id })));
