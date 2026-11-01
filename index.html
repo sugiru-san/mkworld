@@ -301,7 +301,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02k';
+const APP_VERSION = '2026-11-02l';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -827,10 +827,8 @@ function bindTpl(box, ta) {
     b.onpointerdown = e => e.preventDefault();
     b.onclick = () => {
       const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a;
-      // 前の文字とつながらないようにスペースを入れる（「2-3」の後の「後」「直前」などはくっつける）
-      const prev = ta.value[a - 1];
-      const glue = !prev || /\s/.test(prev) || SC_SIDES_FB.includes(b.dataset.tpl);
-      const word = b.dataset.tpl === '改行' ? '\n' : (glue ? '' : ' ') + b.dataset.tpl;
+      // スペースは入れず、そのままくっつける
+      const word = b.dataset.tpl === '改行' ? '\n' : b.dataset.tpl;
       ta.value = ta.value.slice(0, a) + word + ta.value.slice(z);
       ta.selectionStart = ta.selectionEnd = a + word.length;
       ta.focus();
