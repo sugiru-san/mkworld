@@ -244,7 +244,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01s';
+const APP_VERSION = '2026-11-01t';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -824,7 +824,9 @@ function renderList() {
 }
 
 // ---------- メモの表示・編集シート ----------
+let currentNote = null;  // 開いているシート { t, asEdit }（キーボード操作用）
 function openNote(t, asEdit = false, focusField = null) {
+  currentNote = { t, asEdit };
   const course = t.type === 'course' ? data.courses.find(c => c.id === t.id) : null;
   if (t.type === 'course' && !course) return;
   const sheet = $('noteSheet');
@@ -1094,11 +1096,33 @@ function renderRelated(key) {
   section('ここから出発する道中コース', ROUTES.filter(r => r[0] === key).map(r => [{ type: 'route', from: r[0], to: r[1] }, `→ ${displayName(r[1])}`]));}
 
 function closeNote() {
+  currentNote = null;
   $('noteBg').classList.remove('open');
   saveData();
   render();
 }
 $('noteBg').onclick = e => { if (e.target.id === 'noteBg') closeNote(); };
+
+// ---------- キーボード操作（PC・iPadのキーボード用）----------
+// Esc：ひとつ前の画面に戻る ／ Ctrl+Enter（Macは⌘+Enter）：保存
+document.addEventListener('keydown', e => {
+  const open = id => $(id).classList.contains('open');
+  if (e.key === 'Escape') {
+    if (open('syncBg')) $('syncBg').classList.remove('open');
+    else if (open('menuBg')) closeMenu();
+    else if (open('noteBg') && currentNote) {
+      if (currentNote.asEdit) openNote(currentNote.t, false);   // 編集 → 表示（保存はしない）
+      else if ($('backBtn')) $('backBtn').click();              // 道中・SFC → 元の周回コース
+      else closeNote();
+    } else return;
+    e.preventDefault();
+  } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (open('noteBg') && currentNote?.asEdit) $('saveN').click();
+    else if (open('syncBg')) $('sSave').click();
+    else return;
+    e.preventDefault();
+  }
+});
 
 // ---------- 一覧のタブ・検索 ----------
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
