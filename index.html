@@ -246,7 +246,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01x';
+const APP_VERSION = '2026-11-01y';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -675,9 +675,22 @@ function fieldLabel(f) {
 
 // キラー・サンダーポイントの選択（notes['キラーポイント選択'] などに {box, fb} のJSON文字列で保存）
 const POINT_PICKS = {
-  'キラーポイント': { key: 'キラーポイント選択', fb: true },   // 例「2-3前」
+  'キラーポイント': { key: 'キラーポイント選択', fb: true },   // 1件だけだった頃の保存先（今はリスト。下の getKillerList）
   'サンダーポイント': { key: 'サンダーポイント選択', fb: false }, // 例「2-3」
 };
+// キラーポイント：複数登録できる。notes['キラーポイントリスト'] に [{ box, fb, text }] のJSON文字列で保存
+const KILLER_FIELD = 'キラーポイント';
+const KILLER_LIST_KEY = 'キラーポイントリスト';
+function getKillerList(notes) {
+  try {
+    const list = JSON.parse(notes?.[KILLER_LIST_KEY] || 'null');
+    if (Array.isArray(list)) return list;
+  } catch (e) { console.error(e); }
+  // 1件だけだった頃のデータ（選択＋文章）を1件目にする
+  const pick = getPick(notes, KILLER_FIELD);
+  const text = (notes?.[KILLER_FIELD] || '').trim();
+  return pick.box || pick.fb || text ? [{ box: pick.box, fb: pick.fb, text }] : [];
+}
 function getPick(notes, f) {
   try { return { box: '', fb: '', ...JSON.parse(notes?.[POINT_PICKS[f].key] || '{}') }; }
   catch (e) { console.error(e); return { box: '', fb: '' }; }
@@ -708,6 +721,7 @@ const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LE
 function filledCount(t) {
   const n = getNotes(t);
   return data.fields.filter(f => f === SC_FIELD ? getScList(n).length
+    : f === KILLER_FIELD ? getKillerList(n).length
     : POINT_PICKS[f] && scPosText(getPick(n, f)) ? true
     : (n[f] || '').trim()).length;
 }
@@ -855,6 +869,14 @@ function openNote(t, asEdit = false, focusField = null) {
       (t.type === 'route' ? '<div class="field"><div class="body" id="lengthView"></div></div>' : '') +
       '<div class="field" id="rankBox"></div>' +
       data.fields.map(f => {
+      if (f === KILLER_FIELD) {
+        const list = getKillerList(notes);
+        const items = list.map(x => {
+          const pos = scPosText(x);
+          return `<div class="sc-item"><div class="body">${pos ? `<span class="pos">${esc(pos)}</span>` : ''}${x.text ? `<div class="${pos ? 'memo' : ''}">${linkify(x.text)}</div>` : ''}</div></div>`;
+        }).join('');
+        return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">タップして入力</div>'}</div>`;
+      }
       if (f === SC_FIELD) {
         const list = getScList(notes);
         const items = list.map(x => {
@@ -923,6 +945,7 @@ function openNote(t, asEdit = false, focusField = null) {
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
       (t.type === 'route' ? `<div class="field"><div class="style-edit meter-wrap" id="lengthEdit"></div><div class="style-hint">道の長さ</div></div>` : '') +
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
+        : f === KILLER_FIELD ? '<div id="killerList"></div><button class="sc-add" id="killerAdd">＋ キラーを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
@@ -997,7 +1020,36 @@ function openNote(t, asEdit = false, focusField = null) {
       $('scList').lastElementChild.scrollIntoView({ block: 'nearest' });
     };
 
-    // キラー・サンダーポイントの選択ボタン（選んでいるボタンをもう一度タップすると外す）
+    // キラーポイント：1件ごとに アイテム番号・前後 を選び、補足は自由入力。＋で追加、削除で消す
+    const blankKiller = () => ({ box: '', fb: '', text: '' });
+    const killerItems = getKillerList(notes).map(x => ({ ...blankKiller(), ...x }));
+    if (!killerItems.length) killerItems.push(blankKiller());
+    const drawKiller = () => {
+      if (!$('killerList')) return;
+      const row = (i, key, label, values) => `<div class="lbl">${label}</div><div class="opts">${values.map(v =>
+        `<button class="${killerItems[i][key] === v ? 'on' : ''}" data-i="${i}" data-key="${key}" data-v="${v}">${esc(v)}</button>`).join('')}</div>`;
+      $('killerList').innerHTML = killerItems.map((x, i) => `
+        <div class="sc-row">
+          <div class="head">キラー ${i + 1}<button class="del" data-del="${i}">削除</button></div>
+          <div class="sc-pick">${row(i, 'box', 'アイテム', SC_BOXES[t.type])}${row(i, 'fb', '前後', SC_SIDES_FB)}</div>
+          <textarea data-killer-text="${i}" placeholder="補足（任意）">${esc(x.text)}</textarea>
+        </div>`).join('');
+      $('killerList').querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
+        const x = killerItems[+b.dataset.i], k = b.dataset.key;
+        x[k] = x[k] === b.dataset.v ? '' : b.dataset.v;
+        drawKiller();
+      });
+      $('killerList').querySelectorAll('[data-killer-text]').forEach(el => el.oninput = () => { killerItems[+el.dataset.killerText].text = el.value; });
+      $('killerList').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { killerItems.splice(+b.dataset.del, 1); drawKiller(); });
+    };
+    drawKiller();
+    if ($('killerAdd')) $('killerAdd').onclick = () => {
+      killerItems.push(blankKiller());
+      drawKiller();
+      $('killerList').lastElementChild.scrollIntoView({ block: 'nearest' });
+    };
+
+    // サンダーポイントの選択ボタン（選んでいるボタンをもう一度タップすると外す）
     const picks = {};
     sheet.querySelectorAll('[data-pick]').forEach(box => {
       const f = box.dataset.pick;
@@ -1023,6 +1075,11 @@ function openNote(t, asEdit = false, focusField = null) {
         ...(t.type === 'route' ? { [LENGTH_KEY]: length ? String(length) : '' } : {}), [SC_LIST_KEY]: scList.length ? JSON.stringify(scList) : '',
         [SC_FIELD]: '', [SC_KEY]: '', '前張り/打開': '' };
       sheet.querySelectorAll('textarea[data-f]').forEach(el => { next[data.fields[+el.dataset.f]] = el.value; });
+      // キラーポイントはリストに一本化し、1件だけだった頃の保存先は空にする
+      const killerList = killerItems.map(x => ({ box: x.box, fb: x.fb, text: x.text.trim() })).filter(x => x.box || x.fb || x.text);
+      next[KILLER_LIST_KEY] = killerList.length ? JSON.stringify(killerList) : '';
+      next[KILLER_FIELD] = '';
+      next[POINT_PICKS[KILLER_FIELD].key] = '';
       for (const [f, v] of Object.entries(picks)) {
         const val = POINT_PICKS[f].fb ? { box: v.box, fb: v.fb } : { box: v.box };
         next[POINT_PICKS[f].key] = Object.values(val).some(Boolean) ? JSON.stringify(val) : '';
@@ -1276,7 +1333,20 @@ function applyPatch(d) {
     else if (n.kind === 'sfc' && sfcParent(n.name)) t = { type: 'sfc', name: n.name };
     if (!t) { missing.push(n.course || n.name || `${n.from}→${n.to}`); continue; }
     const notes = { ...getNotes(t) };
+    // キラー：n.killer（[{box, fb, text}]）と、set のキラーポイントの文章（1行＝1件）をリストに足す
+    const killerAdds = [...(n.killer || []),
+      ...String(n.set?.[KILLER_FIELD] || '').split('\n').map(x => x.trim()).filter(Boolean).map(text => ({ text }))];
+    if (killerAdds.length) {
+      const list = getKillerList(notes);
+      for (const x of killerAdds) {
+        const item = { box: '', fb: '', text: '', ...x };
+        if (!list.some(y => JSON.stringify({ box: '', fb: '', text: '', ...y }) === JSON.stringify(item))) list.push(item);
+      }
+      notes[KILLER_LIST_KEY] = JSON.stringify(list);
+      notes[KILLER_FIELD] = ''; notes[POINT_PICKS[KILLER_FIELD].key] = '';
+    }
     for (const [k, v] of Object.entries(n.set || {})) {
+      if (k === KILLER_FIELD) continue;
       const cur = (notes[k] || '').trim();
       const isText = data.fields.includes(k);
       notes[k] = isText && cur && !cur.includes(v) ? `${cur}\n${v}` : (isText && cur.includes(v) ? cur : String(v));
