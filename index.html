@@ -138,6 +138,13 @@
   /* タップで編集に入れる項目 */
   .field[data-edit] { cursor: pointer; border-radius: 10px; margin-left: -8px; margin-right: -8px; padding: 4px 8px; }
   .field[data-edit]:active { background: var(--pit-high); }
+  /* 道の長さのメーター（青いゲージ） */
+  .meter { display: inline-flex; gap: 3px; vertical-align: middle; }
+  .meter button { width: clamp(30px, 9vw, 44px); height: 22px; padding: 0; border-radius: 0; background: var(--pit-high); }
+  .meter button:first-child { border-radius: 6px 0 0 6px; }
+  .meter button:last-child { border-radius: 0 6px 6px 0; }
+  .meter button.on { background: var(--item-blue); }
+  .meter-wrap { display: flex; align-items: center; min-height: 44px; }
   .style-tap { background: none; padding: 0 1px; font: inherit; color: inherit; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
@@ -240,7 +247,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01o';
+const APP_VERSION = '2026-11-01p';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -688,7 +695,7 @@ function getRanks(notes) {
 }
 const rankAvg = ranks => ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : '';
 
-// 道の長さ（道中コースだけ）：notes['道の長さ'] に '1'〜'5'。★が多いほど長い
+// 道の長さ（道中コースだけ）：notes['道の長さ'] に '1'〜'5'。青いメーターが伸びるほど長い
 const LENGTH_KEY = '道の長さ';
 const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LENGTH_KEY] : 0;
 
@@ -717,7 +724,8 @@ function noteButton(t, label) {
   const avg = rankAvg(getRanks(getNotes(t)));
   const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
   const st = [styleHtml(parseStyle(getNotes(t))), len ? `長さ${len}` : '', scs, avg ? `平均${avg}位` : ''].filter(Boolean).join(' ');
-  b.innerHTML = `${nameHtml(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
+  // 何項目入力したかの数は出さない。★などが無く文章のメモだけのときは「メモあり」
+  b.innerHTML = `${nameHtml(label)}<small class="${n || st ? '' : 'none'}">${st || (n ? 'メモあり' : '未入力')}</small>`;
   b.onclick = () => openNote(t);
   return b;
 }
@@ -881,13 +889,30 @@ function openNote(t, asEdit = false, focusField = null) {
       });
     };
     drawRatingView('styleView', parseStyle, STYLE_KEY, '前張り', '打開', '前張り/打開');
-    drawRatingView('lengthView', getLength, LENGTH_KEY, '短い', '長い', '道の長さ');
+    // 道の長さ：青いメーター（同じ所をもう一度タップで外す）
+    const drawLengthView = () => {
+      const box = $('lengthView');
+      if (!box) return;
+      const lv = getLength(getNotes(t));
+      box.innerHTML = '<div class="meter-wrap"><span class="style-end">短</span><span class="meter">' +
+        [1, 2, 3, 4, 5].map(i => `<button class="${i <= lv ? 'on' : ''}" data-lv="${i}" aria-label="道の長さ${i}"></button>`).join('') +
+        '</span><span class="style-end">長</span></div>';
+      box.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => {
+        const v = +b.dataset.lv === lv ? 0 : +b.dataset.lv;
+        setNotes(t, { ...getNotes(t), [LENGTH_KEY]: v ? String(v) : '' });
+        saveData();
+        renderList();
+        drawLengthView();
+        toast(v ? `道の長さを${v}にしました` : '道の長さを外しました');
+      });
+    };
+    drawLengthView();
     $('closeN').onclick = closeNote;
   } else {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       (course ? `<div class="field"><div class="name">コース名</div><input type="text" id="cName" value="${esc(course.name)}"></div>` : '') +
       `<div class="field"><div class="style-edit" id="styleEdit"></div><div class="style-hint">★1＝前張り寄り ／ ★5＝打開寄り</div></div>` +
-      (t.type === 'route' ? `<div class="field"><div class="style-edit" id="lengthEdit"></div><div class="style-hint">道の長さ：★1＝短い ／ ★5＝長い</div></div>` : '') +
+      (t.type === 'route' ? `<div class="field"><div class="style-edit meter-wrap" id="lengthEdit"></div><div class="style-hint">道の長さ</div></div>` : '') +
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
@@ -920,9 +945,9 @@ function openNote(t, asEdit = false, focusField = null) {
     let length = getLength(notes);
     const drawLength = () => {
       if (!$('lengthEdit')) return;
-      $('lengthEdit').innerHTML = '<span class="style-end">短い</span>' +
-        [1, 2, 3, 4, 5].map(i => `<button class="star${i <= length ? ' on' : ''}" data-lv="${i}">${i <= length ? '★' : '☆'}</button>`).join('') +
-        '<span class="style-end">長い</span><button class="clear" data-lv="0">クリア</button>';
+      $('lengthEdit').innerHTML = '<span class="style-end">短</span><span class="meter">' +
+        [1, 2, 3, 4, 5].map(i => `<button class="${i <= length ? 'on' : ''}" data-lv="${i}" aria-label="道の長さ${i}"></button>`).join('') +
+        '</span><span class="style-end">長</span><button class="clear" data-lv="0">クリア</button>';
       $('lengthEdit').querySelectorAll('button').forEach(b => b.onclick = () => { length = +b.dataset.lv; drawLength(); });
     };
     drawLength();
