@@ -132,6 +132,7 @@
   .rank-actions .undo { background: none; color: var(--muted); font-size: 13px; padding: 8px 6px; }
   .rank-pad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
   .rank-pad button { min-height: 44px; padding: 0; font-weight: 900; font-size: 16px; }
+  .rank-pad button small { font-size: 11px; margin-left: 1px; }
   /* タップで編集に入れる項目 */
   .field[data-edit] { cursor: pointer; border-radius: 10px; margin-left: -8px; margin-right: -8px; padding: 4px 8px; }
   .field[data-edit]:active { background: var(--pit-high); }
@@ -244,7 +245,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01u';
+const APP_VERSION = '2026-11-01v';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -690,6 +691,13 @@ function getRanks(notes) {
     return Array.isArray(a) ? a.filter(n => Number.isInteger(n) && n >= 1 && n <= RANK_MAX) : [];
   } catch (e) { console.error(e); return []; }
 }
+// 順位に英語の序数を付ける（1st 2nd 3rd 4th … 11th 12th 13th … 21st 22nd 23rd 24th）
+function ordSuffix(n) {
+  const v = Math.round(n) % 100;
+  if (v >= 11 && v <= 13) return 'th';
+  return { 1: 'st', 2: 'nd', 3: 'rd' }[v % 10] || 'th';
+}
+const ord = n => `${n}${ordSuffix(n)}`;
 const rankAvg = ranks => ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : '';
 
 // 道の長さ（道中コースだけ）：notes['道の長さ'] に '1'〜'5'。青いメーターが伸びるほど長い
@@ -720,7 +728,7 @@ function noteButton(t, label) {
   const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
   const avg = rankAvg(getRanks(getNotes(t)));
   const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
-  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `Ave ${avg}` : ''].filter(Boolean).join(' ');
+  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `Ave ${avg}${ordSuffix(+avg)}` : ''].filter(Boolean).join(' ');
   // 何項目入力したかの数や道の長さは出さない。★などが無く、文章のメモや道の長さだけのときは「メモあり」
   const memo = n || len;
   b.innerHTML = `${nameHtml(label)}<small class="${memo || st ? '' : 'none'}">${st || (memo ? 'メモあり' : '未入力')}</small>`;
@@ -1057,10 +1065,10 @@ function renderRank(t, padOpen = false) {
   // 平均と戦数を左、「＋記録」「取り消し」を右に1行で並べる
   const actions = `<span class="rank-actions">${ranks.length ? '<button class="undo" id="rankUndo">取り消し</button>' : ''}<button id="rankAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
   box.innerHTML = `<div class="name">Ave</div>` +
-    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>位</small></span><span class="rank-n">${ranks.length}戦</span>`
+    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>${ordSuffix(+avg)}</small></span><span class="rank-n">${ranks.length}戦</span>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
     // 過去の順位は平均の計算用に保存するだけで、一覧表示はしない
-    (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}</button>`).join('')}</div>` : '');
+    (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}<small>${ordSuffix(i + 1)}</small></button>`).join('')}</div>` : '');
   const save = next => {
     setNotes(t, { ...getNotes(t), [RANK_KEY]: next.length ? JSON.stringify(next) : '' });
     saveData();
@@ -1071,13 +1079,13 @@ function renderRank(t, padOpen = false) {
     const next = ranks.slice(0, -1);
     save(next);
     renderRank(t, padOpen);
-    toast(`${ranks[ranks.length - 1]}位の記録を取り消しました`);
+    toast(`${ord(ranks[ranks.length - 1])}の記録を取り消しました`);
   };
   box.querySelectorAll('[data-rank]').forEach(b => b.onclick = () => {
     const next = [...ranks, +b.dataset.rank];
     save(next);
     renderRank(t, false);
-    toast(`${b.dataset.rank}位を記録しました（Ave ${rankAvg(next)}）`);
+    toast(`${ord(+b.dataset.rank)}を記録しました（Ave ${rankAvg(next)}${ordSuffix(+rankAvg(next))}）`);
   });
 }
 
