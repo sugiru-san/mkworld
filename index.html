@@ -247,7 +247,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01q';
+const APP_VERSION = '2026-11-01r';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -1296,7 +1296,25 @@ $('importFile').onchange = e => {
   });
 })();
 
+// 新しい版の自動チェック：公開版の index.html をキャッシュを使わずに読み、版が違えば読み込み直す
+// （iPhoneのホーム画面アプリは古い画面を覚えたままになりやすいため）
+async function checkUpdate() {
+  if (location.protocol === 'file:') return;
+  try {
+    const html = await (await fetch(`${location.pathname}?check=${Date.now()}`, { cache: 'no-store' })).text();
+    const latest = (/APP_VERSION = '([^']+)'/.exec(html) || [])[1];
+    if (!latest || latest === APP_VERSION) return;
+    // 同じ版への読み込み直しは1回だけ（何かの理由で古いままでも、繰り返さない）
+    if (sessionStorage.getItem('mkworld-reloaded') === latest) return;
+    sessionStorage.setItem('mkworld-reloaded', latest);
+    toast('新しい版に更新します');
+    setTimeout(() => location.replace(`${location.pathname}?v=${encodeURIComponent(latest)}`), 600);
+  } catch (e) { console.error(e); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+
 render();
+checkUpdate();
 $('appVersion').textContent = `版：${APP_VERSION}`;
 pull();
 </script>
