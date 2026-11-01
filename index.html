@@ -48,10 +48,13 @@
   #stage { position: relative; width: 100%; user-select: none; touch-action: manipulation; }
   #stage img { display: block; width: 100%; border-radius: 14px; }
   #stage.empty { border: 2px dashed var(--pit-high); border-radius: 14px; padding: 40px 16px; text-align: center; }
-  .spot { position: absolute; border-radius: 8px; display: flex; align-items: flex-end; justify-content: center;
-    font-size: 11px; font-weight: 800; text-shadow: 0 0 3px #000, 0 0 3px #000; overflow: hidden; text-align: center; }
-  .spot.view { border: 2px solid transparent; }
-  .spot.view:active { background: rgba(255, 194, 26, .35); border-color: var(--coin); }
+  /* コースの枠：タップできる範囲（.spot）はそのまま、見える枠は中心の小さめの丸（::before）にする */
+  .spot { position: absolute; display: flex; align-items: flex-end; justify-content: center;
+    font-size: 11px; font-weight: 800; text-shadow: 0 0 3px #000, 0 0 3px #000; text-align: center; }
+  .spot::before { content: ""; position: absolute; left: 50%; top: 50%; width: 78%; aspect-ratio: 1; transform: translate(-50%, -50%);
+    border-radius: 50%; border: 2px solid transparent; pointer-events: none; }
+  .spot .label { position: relative; }
+  .spot.view:active::before { background: rgba(255, 194, 26, .35); border-color: var(--coin); }
   .spot.view .label { display: none; }
   body.showLabels .spot.view .label { display: block; }
   /* マップの「コース / 道中」切り替え */
@@ -62,15 +65,16 @@
   #routeHint { font-size: 13px; color: var(--muted); font-weight: 700; min-width: 0; }
   #routeHint b { color: var(--curb-white); }
   /* 道中モード：出発は黄、行き先は青（それ以外はそのまま） */
-  .spot.from { border: 3px solid var(--coin); background: rgba(255, 194, 26, .22); }
-  .spot.to { border: 2px solid var(--item-blue); background: rgba(54, 169, 225, .22); }
+  .spot.from::before { border: 3px solid var(--coin); background: rgba(255, 194, 26, .22); }
+  .spot.to::before { border-color: var(--item-blue); background: rgba(54, 169, 225, .22); }
   /* 行き先の名前はマップの下にボタンで並べる（マップ上だと小さい画面で読めないため） */
   .route-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .route-chips:empty { display: none; }
   .route-chips button { background: var(--pit-high); font-weight: 700; font-size: 14px; padding: 8px 12px; border-left: 3px solid var(--item-blue); }
   .route-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
   .route-lines line { stroke: var(--item-blue); stroke-width: 2.5; stroke-linecap: round; opacity: .9; }
-  .spot.edit { border: 2px solid var(--coin); background: rgba(255, 194, 26, .2); touch-action: none; }
+  .spot.edit { touch-action: none; }
+  .spot.edit::before { border-color: var(--coin); background: rgba(255, 194, 26, .2); }
   /* 周回・道中・SFC の切り替え：選んでいる方の下にセンターライン */
   .tabs { display: flex; gap: 4px; margin: 14px 0 10px; background: var(--pit); border-radius: 12px; padding: 4px; }
   .tabs button { flex: 1; position: relative; background: none; color: var(--muted); padding: 10px 4px 13px; font-size: 15px; font-weight: 700; border-radius: 9px; }
@@ -280,7 +284,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02f';
+const APP_VERSION = '2026-11-02g';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -869,12 +873,14 @@ function renderStage() {
     // 線は枠の外側だけに引く（出発の枠を出た所から、行き先の枠に入る手前まで）
     const from = courseByKey(routeFrom);
     const GAP = 0.6;  // 枠と線のすき間（%）
+    const ratio = $('stage').clientWidth / ($('stage').clientHeight || 1);  // 横%→縦%の換算（丸を%座標で楕円として扱う）
     const lines = !from ? [] : dests.map(courseByKey).filter(Boolean).map(to => {
       const fx = from.x + from.w / 2, fy = from.y + from.h / 2, tx = to.x + to.w / 2, ty = to.y + to.h / 2;
       const dx = tx - fx, dy = ty - fy;
       // 中心から出たとき、枠（半分の幅・高さ＋すき間）を抜けるまでの割合
-      const exit = (w, h) => Math.min(dx ? (w / 2 + GAP) / Math.abs(dx) : Infinity, dy ? (h / 2 + GAP) / Math.abs(dy) : Infinity);
-      const t1 = exit(from.w, from.h), t2 = 1 - exit(to.w, to.h);
+      // 中心から出たとき、丸（半径＝幅の39%＋すき間）を抜けるまでの割合
+      const exit = w => { const rx = w * 0.39 + GAP, ry = rx * ratio; return 1 / Math.hypot(dx / rx, dy / ry); };
+      const t1 = exit(from.w), t2 = 1 - exit(to.w);
       return t2 > t1 ? `<line x1="${fx + dx * t1}" y1="${fy + dy * t1}" x2="${fx + dx * t2}" y2="${fy + dy * t2}" vector-effect="non-scaling-stroke"/>` : '';
     });
     stage.insertAdjacentHTML('beforeend', `<svg class="route-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines.join('')}</svg>`);
