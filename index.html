@@ -255,7 +255,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01z';
+const APP_VERSION = '2026-11-02a';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -766,10 +766,10 @@ function tagsOf(t) {
 function noteButton(t, label) {
   const b = document.createElement('button');
   const n = filledCount(t);
-  const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
   const avg = rankAvg(getRanks(getNotes(t)));
   const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
-  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `Ave ${avg}th` : ''].filter(Boolean).join(' ');
+  // 一覧では主要SCのキノコは出さない（コースを開いたときだけ表示）
+  const st = [styleHtml(parseStyle(getNotes(t))), avg ? `Ave ${avg}th` : ''].filter(Boolean).join(' ');
   // 何項目入力したかの数や道の長さは出さない。★などが無く、文章のメモや道の長さだけのときは「メモあり」
   const memo = n || len;
   b.innerHTML = `${nameHtml(label)}<small class="${memo || st ? '' : 'none'}">${st || (memo ? 'メモあり' : '未入力')}</small>`;
