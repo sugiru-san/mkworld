@@ -174,6 +174,15 @@
   .thunder-dist span.top { color: var(--coin); }
   .thunder-pad { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .thunder-pad button { min-width: 52px; min-height: 44px; font-weight: 900; }
+  /* 立ち回りの中のアイコン（キノ1・金キノ・ハネ・キラーなどの言葉の代わり） */
+  .tok { height: 1.5em; vertical-align: -0.35em; margin: 0 1px; }
+  /* 定型の言葉をタップで入れるボタン */
+  .tpl { margin-top: 8px; display: grid; gap: 6px; }
+  .tpl .opts { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tpl button { background: var(--pit-high); color: var(--curb-white); font-weight: 700; font-size: 14px; min-height: 38px; padding: 4px 10px;
+    display: inline-flex; align-items: center; gap: 2px; }
+  .tpl button img { height: 24px; }
+  .tpl button.word { background: var(--pit); border: 1px solid var(--pit-high); }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
   input[type=text], input[type=search], input[type=password], textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px;
@@ -292,8 +301,10 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02i';
-const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
+const APP_VERSION = '2026-11-02j';
+const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
+// 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
+const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
 // 初期配置：map.jpg（1920x1080）上のコースアイコン中心座標(px)とコース名
@@ -555,6 +566,7 @@ async function pull(options = {}, conflicts = 0) {
       const text = meta.content ? b64dec(meta.content)
         : await (await ghFetch('GET', null, 'application/vnd.github.raw+json')).text();
       const remote = migrate(JSON.parse(text));
+      upgradeMerged(remote);
       const before = JSON.stringify(data);
       data = (options.replaceLocal || data.pristine) ? remote : mergeData(data, remote);
       if (firstPullDone && JSON.stringify(data) !== before) toast('ほかの端末のメモを読み込みました');
@@ -626,6 +638,18 @@ document.addEventListener('visibilitychange', () => {
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+// 立ち回りの文章で、アイテムの言葉をアイコンに置き換える（「キラーシップ」などコース名の一部は置き換えない）
+const TOKEN_ICONS = [
+  ['金キノ', 'golden.png'], ['キノ3', 'mushroom3.png'], ['キノ2', 'mushroom.png', 2], ['キノ1', 'mushroom.png'],
+  ['ハネ', 'feather.png'], ['キラー(?!シップ)', 'killer.png', 1, 'キラー'], ['サンダー', 'thunder.png'],
+];
+const TOKEN_RE = new RegExp(TOKEN_ICONS.map(x => x[0]).join('|'), 'g');
+function richText(s) {
+  return linkify(s).replace(TOKEN_RE, m => {
+    const [word, src, n = 1, alt = word] = TOKEN_ICONS.find(x => new RegExp(`^${x[0]}$`).test(m));
+    return `<img class="tok" src="${src}" alt="${alt}">`.repeat(n);
+  });
+}
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
 // ---------- メモの対象（周回コース / 道中コース / SFCコース）----------
@@ -787,6 +811,56 @@ const rankAvg = ranks => ranks.length ? (ranks.reduce((a, b) => a + b, 0) / rank
 // 道の長さ（道中コースだけ）：notes['道の長さ'] に '1'〜'5'。青いメーターが伸びるほど長い
 const LENGTH_KEY = '道の長さ';
 const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LENGTH_KEY] : 0;
+
+// 立ち回りのタップで入れる言葉。番号はコースの種類で変わる
+const TPL_WORDS = ['SC', 'ショトカ', '前入場', '入場前', '入場直後', 'グライダー', '無敵', 'コイン集め', '運搬', '前戻り'];
+const TPL_ITEMS = ['キノ1', 'キノ2', 'キノ3', '金キノ', 'ハネ', 'キラー'];
+function tplHtml(type) {
+  const row = (vals, cls = '', show = v => esc(v)) => `<div class="opts">${vals.map(v => `<button type="button" class="${cls}" data-tpl="${esc(v)}">${show(v)}</button>`).join('')}</div>`;
+  return `<div class="tpl">${row(SC_BOXES[type])}${row(SC_SIDES_FB)}${row(SC_SIDES_LR)}${row(TPL_ITEMS, '', v => richText(v))}${row(TPL_WORDS, 'word')}${row(['改行'], 'word', () => '⏎ 改行')}</div>`;
+}
+// カーソルの位置に言葉を入れる（キーボードを閉じないよう、ボタンを押してもフォーカスは入力欄のまま）
+function bindTpl(box, ta) {
+  box.querySelectorAll('[data-tpl]').forEach(b => {
+    b.onpointerdown = e => e.preventDefault();
+    b.onclick = () => {
+      const a = ta.selectionStart ?? ta.value.length, z = ta.selectionEnd ?? a;
+      // 前の文字とつながらないようにスペースを入れる（「2-3」の後の「後」「直前」などはくっつける）
+      const prev = ta.value[a - 1];
+      const glue = !prev || /\s/.test(prev) || SC_SIDES_FB.includes(b.dataset.tpl);
+      const word = b.dataset.tpl === '改行' ? '\n' : (glue ? '' : ' ') + b.dataset.tpl;
+      ta.value = ta.value.slice(0, a) + word + ta.value.slice(z);
+      ta.selectionStart = ta.selectionEnd = a + word.length;
+      ta.focus();
+      ta.dispatchEvent(new Event('input'));
+    };
+  });
+}
+
+// 主要SC・キラーポイントのリストを、立ち回りの文章（1件＝1行）に変えてまとめる
+const NEED_WORD = { 1: 'キノ1', 2: 'キノ2', 3: 'キノ3', '金': '金キノ', 'ハネ': 'ハネ' };
+function mergeIntoTachimawari(notes) {
+  if (!notes) return false;
+  const lines = [];
+  for (const x of getScList(notes)) lines.push(['SC', scPosText(x), NEED_WORD[x.need] || '', x.text || ''].filter(Boolean).join(' '));
+  for (const x of getKillerList(notes)) lines.push(['キラー', scPosText(x), x.text || ''].filter(Boolean).join(' '));
+  const had = [SC_LIST_KEY, SC_KEY, SC_FIELD, KILLER_LIST_KEY, KILLER_FIELD, POINT_PICKS[KILLER_FIELD].key].some(k => String(notes[k] || '').trim());
+  if (!had) return false;
+  const cur = (notes['立ち回り'] || '').trim();
+  const add = lines.filter(l => l && !cur.split('\n').includes(l));
+  notes['立ち回り'] = [cur, ...add].filter(Boolean).join('\n');
+  [SC_LIST_KEY, SC_KEY, SC_FIELD, KILLER_LIST_KEY, KILLER_FIELD, POINT_PICKS[KILLER_FIELD].key].forEach(k => { notes[k] = ''; });
+  return true;
+}
+// 保存データ全体をまとめた形にする（項目の並びも新しくする）
+function upgradeMerged(d) {
+  let changed = false;
+  if (JSON.stringify(d.fields) === JSON.stringify(SPLIT_FIELDS)) { d.fields = DEFAULT_FIELDS.slice(); d.settingsU = Date.now(); changed = true; }
+  const now = Date.now();
+  for (const c of d.courses) if (mergeIntoTachimawari(c.notes)) { c.u = now; changed = true; }
+  for (const [k, n] of Object.entries(d.extra || {})) if (mergeIntoTachimawari(n)) { d.extraU[k] = now; changed = true; }
+  return changed;
+}
 
 function filledCount(t) {
   const n = getNotes(t);
@@ -1004,7 +1078,7 @@ function openNote(t, asEdit = false, focusField = null) {
         const pos = scPosText(getPick(notes, f));
         if (pos) return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="sc-item"><div class="body"><span class="pos">${esc(pos)}</span>${v ? `<div class="memo">${linkify(v)}</div>` : ''}</div></div></div>`;
       }
-      return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? linkify(v) : 'タップして入力'}</div></div>`;
+      return `<div class="field" data-edit="${esc(f)}"><div class="name">${fieldLabel(f)}</div><div class="body ${v ? '' : 'blank'}">${v ? richText(v) : 'タップして入力'}</div></div>`;
     }).map((html, i) => data.fields[i] === 'サンダーポイント' ? html + '<div class="field" id="thunderBox"></div>' : html).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
@@ -1062,6 +1136,7 @@ function openNote(t, asEdit = false, focusField = null) {
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : f === KILLER_FIELD ? '<div id="killerList"></div><button class="sc-add" id="killerAdd">＋ キラーを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
+        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea>${tplHtml(t.type)}`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
@@ -1163,6 +1238,8 @@ function openNote(t, asEdit = false, focusField = null) {
       drawKiller();
       $('killerList').lastElementChild.scrollIntoView({ block: 'nearest' });
     };
+
+    if ($('tachiInput')) bindTpl($('tachiInput').parentElement, $('tachiInput'));
 
     // サンダーポイントの選択ボタン（選んでいるボタンをもう一度タップすると外す）
     const picks = {};
@@ -1542,6 +1619,7 @@ function applyPatch(d) {
       notes[SC_LIST_KEY] = JSON.stringify(list);
       notes[SC_FIELD] = ''; notes[SC_KEY] = '';
     }
+    mergeIntoTachimawari(notes);
     setNotes(t, notes);
     count++;
   }
@@ -1577,6 +1655,7 @@ $('importFile').onchange = e => {
       if (!Array.isArray(d.courses) || !Array.isArray(d.fields)) throw new Error('invalid format');
       if (!confirm(`${d.courses.length} コース分のデータを読み込みます。今のデータは上書きされます。よろしいですか？`)) return;
       data = migrate(d);
+      upgradeMerged(data);
       data.pristine = false;
       saveLocal();
       closeMenu();
@@ -1644,6 +1723,7 @@ async function checkUpdate() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
 
+if (upgradeMerged(data)) saveData();
 render();
 checkUpdate();
 $('appVersion').textContent = `版：${APP_VERSION}`;
