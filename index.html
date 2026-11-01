@@ -189,6 +189,9 @@
   .progress .bar { height: 8px; border-radius: 4px; background: var(--pit-high); overflow: hidden; }
   .progress .bar i { display: block; height: 100%; background: var(--item-blue); }
   .progress .num { text-align: right; color: var(--muted); font-weight: 700; }
+  .progress summary { list-style: none; cursor: pointer; }
+  .progress summary::-webkit-details-marker { display: none; }
+  .progress .done-list { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 6px 0 4px 4.2em; }
   .menu button { display: block; width: 100%; margin-bottom: 8px; text-align: left; background: var(--pit-high); color: var(--curb-white); }
 </style>
 </head>
@@ -256,7 +259,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02b';
+const APP_VERSION = '2026-11-02c';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -1215,14 +1218,20 @@ $('modeBtn').onclick = () => { editMode = !editMode; render(); };
 // 入力済み＝順位の記録以外に何か入っているコース
 const hasMemo = t => Object.entries(getNotes(t)).some(([k, v]) => k !== RANK_KEY && String(v).trim());
 function renderProgress() {
+  // 周回は正式名30コースで数える（同じコースの枠が複数あっても、どれかにメモがあれば1コース）
+  const courseDone = OFFICIAL_NAMES.filter(key => data.courses.some(c => c.key === key && hasMemo({ type: 'course', id: c.id })));
+  const routes = ROUTES.map(([from, to]) => ({ t: { type: 'route', from, to }, label: `${displayName(from)} → ${displayName(to)}` }));
+  const sfcs = Object.values(SFC_COURSES).flat().map(name => ({ t: { type: 'sfc', name }, label: name }));
   const groups = [
-    ['周回', data.courses.filter(c => OFFICIAL_NAMES.includes(c.key)).map(c => ({ type: 'course', id: c.id }))],
-    ['道中', ROUTES.map(([from, to]) => ({ type: 'route', from, to }))],
-    ['SFC', Object.values(SFC_COURSES).flat().map(name => ({ type: 'sfc', name }))],
-  ].map(([label, ts]) => [label, ts.filter(hasMemo).length, ts.length]);
-  const done = groups.reduce((a, g) => a + g[1], 0), all = groups.reduce((a, g) => a + g[2], 0);
+    ['周回', courseDone.map(displayName), OFFICIAL_NAMES.length],
+    ['道中', routes.filter(x => hasMemo(x.t)).map(x => x.label), routes.length],
+    ['SFC', sfcs.filter(x => hasMemo(x.t)).map(x => x.label), sfcs.length],
+  ];
+  const done = groups.reduce((a, g) => a + g[1].length, 0), all = groups.reduce((a, g) => a + g[2], 0);
+  // 行をタップすると、入力済みのコース名が開く（端末どうしで数がずれたときの見比べ用）
   $('progress').innerHTML = `<div class="total">入力済み <b>${done}</b> / ${all} コース</div>` +
-    groups.map(([label, n, total]) => `<div class="row2"><span>${label}</span><span class="bar"><i style="width:${total ? n / total * 100 : 0}%"></i></span><span class="num">${n} / ${total}</span></div>`).join('');
+    groups.map(([label, names, total]) => `<details><summary class="row2"><span>${label}</span><span class="bar"><i style="width:${total ? names.length / total * 100 : 0}%"></i></span><span class="num">${names.length} / ${total}</span></summary>
+      <div class="done-list">${names.map(n => esc(n)).join('<br>') || 'まだありません'}</div></details>`).join('');
 }
 $('menuBtn').onclick = () => { $('labelState').textContent = data.showLabels ? 'ON' : 'OFF'; renderProgress(); $('menuBg').classList.add('open'); };
 const closeMenu = () => $('menuBg').classList.remove('open');
