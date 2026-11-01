@@ -122,6 +122,19 @@
   .sc-edit button { background: var(--pit-high); color: var(--muted); display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
   .sc-edit button img { height: 26px; }
   .sc-edit button.on { background: var(--coin); color: var(--asphalt); }
+  /* 平均順位 */
+  .rank-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .rank-avg { font-size: 34px; font-weight: 900; line-height: 1.1; }
+  .rank-avg small { font-size: 16px; margin-left: 2px; }
+  .rank-n { font-size: 13px; color: var(--muted); font-weight: 700; }
+  .rank-recent { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; }
+  .rank-recent span { min-width: 28px; text-align: center; padding: 1px 6px; border-radius: 8px; background: var(--asphalt); font-size: 13px; font-weight: 700; }
+  .rank-recent span.top { color: var(--coin); }
+  .rank-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .rank-actions button { font-weight: 700; }
+  .rank-actions .undo { background: none; color: var(--muted); font-size: 13px; }
+  .rank-pad { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 10px; }
+  .rank-pad button { min-height: 44px; padding: 0; font-weight: 900; font-size: 16px; }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
   input[type=text], input[type=search], input[type=password], textarea { width: 100%; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px;
@@ -223,7 +236,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-01k';
+const APP_VERSION = '2026-11-01l';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -660,6 +673,17 @@ function getPick(notes, f) {
   catch (e) { console.error(e); return { box: '', fb: '' }; }
 }
 
+// 平均順位：notes['順位記録'] に順位の配列のJSON文字列で保存（古い順）
+const RANK_KEY = '順位記録';
+const RANK_MAX = 24;
+function getRanks(notes) {
+  try {
+    const a = JSON.parse(notes?.[RANK_KEY] || '[]');
+    return Array.isArray(a) ? a.filter(n => Number.isInteger(n) && n >= 1 && n <= RANK_MAX) : [];
+  } catch (e) { console.error(e); return []; }
+}
+const rankAvg = ranks => ranks.length ? (ranks.reduce((a, b) => a + b, 0) / ranks.length).toFixed(1) : '';
+
 function filledCount(t) {
   const n = getNotes(t);
   return data.fields.filter(f => f === SC_FIELD ? getScList(n).length
@@ -682,7 +706,8 @@ function noteButton(t, label) {
   const b = document.createElement('button');
   const n = filledCount(t);
   const scs = getScList(getNotes(t)).map(x => scHtml(x.need)).filter(Boolean).join(' ');
-  const st = styleHtml(parseStyle(getNotes(t))) + (scs ? ' ' + scs : '');
+  const avg = rankAvg(getRanks(getNotes(t)));
+  const st = [styleHtml(parseStyle(getNotes(t))), scs, avg ? `平均${avg}位` : ''].filter(Boolean).join(' ');
   b.innerHTML = `${nameHtml(label)}<small class="${n || st ? '' : 'none'}">${st}${st && n ? ' ' : ''}${n ? `✓ ${n}/${data.fields.length} 項目` : st ? '' : '未入力'}</small>`;
   b.onclick = () => openNote(t);
   return b;
@@ -801,6 +826,7 @@ function openNote(t, asEdit = false) {
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       // 見出しは付けず、未入力のときは空の☆を薄く出す
       `<div class="field"><div class="body ${st ? '' : 'blank'}">${st || '<span class="style-end">前張り</span><span class="style big"><span class="off">☆☆☆☆☆</span></span><span class="style-end">打開</span>'}</div></div>` +
+      '<div class="field" id="rankBox"></div>' +
       data.fields.map(f => {
       if (f === SC_FIELD) {
         const list = getScList(notes);
@@ -819,6 +845,7 @@ function openNote(t, asEdit = false) {
     }).join('') + '<div id="related"></div>' +
       `<div class="row"><button id="toEdit">✏️ 編集する</button><button class="primary" id="closeN">閉じる</button></div>`;
     if (course) renderRelated(course.key || course.name);
+    renderRank(t);
     $('toEdit').onclick = () => openNote(t, true);
     $('closeN').onclick = closeNote;
   } else {
@@ -926,8 +953,8 @@ function openNote(t, asEdit = false) {
     };
     $('delN').onclick = () => {
       // 枠は消さず、メモだけ消す
-      if (!confirm('このコースのメモを消しますか？')) return;
-      setNotes(t, {});
+      if (!confirm('このコースのメモを消しますか？（順位の記録は残ります）')) return;
+      setNotes(t, { [RANK_KEY]: notes[RANK_KEY] || '' });
       saveData();
       render();
       openNote(t, false);
@@ -937,6 +964,39 @@ function openNote(t, asEdit = false) {
   if (parentCourse) $('backBtn').onclick = () => openNote({ type: 'course', id: parentCourse.id });
   $('noteBg').classList.add('open');
   sheet.scrollTop = 0;
+}
+
+// 平均順位の欄。「＋ 順位を記録」で1〜24位のボタンを出し、タップで記録する
+function renderRank(t, padOpen = false) {
+  const box = $('rankBox');
+  if (!box) return;
+  const ranks = getRanks(getNotes(t));
+  const avg = rankAvg(ranks);
+  const recent = ranks.slice(-10).reverse();
+  box.innerHTML = `<div class="name">平均順位</div>` +
+    (avg ? `<div class="rank-head"><span class="rank-avg">${avg}<small>位</small></span><span class="rank-n">${ranks.length}戦</span></div>
+      <div class="rank-recent" title="最近の順位（新しい順）">${recent.map(n => `<span class="${n <= 3 ? 'top' : ''}">${n}</span>`).join('')}</div>`
+      : '<div class="body blank">まだ記録がありません</div>') +
+    `<div class="rank-actions"><button id="rankAdd">${padOpen ? '閉じる' : '＋ 順位を記録'}</button>${ranks.length ? '<button class="undo" id="rankUndo">最後の記録を取り消す</button>' : ''}</div>` +
+    (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}</button>`).join('')}</div>` : '');
+  const save = next => {
+    setNotes(t, { ...getNotes(t), [RANK_KEY]: next.length ? JSON.stringify(next) : '' });
+    saveData();
+    renderList();
+  };
+  $('rankAdd').onclick = () => renderRank(t, !padOpen);
+  if ($('rankUndo')) $('rankUndo').onclick = () => {
+    const next = ranks.slice(0, -1);
+    save(next);
+    renderRank(t, padOpen);
+    toast(`${ranks[ranks.length - 1]}位の記録を取り消しました`);
+  };
+  box.querySelectorAll('[data-rank]').forEach(b => b.onclick = () => {
+    const next = [...ranks, +b.dataset.rank];
+    save(next);
+    renderRank(t, false);
+    toast(`${b.dataset.rank}位を記録しました（平均 ${rankAvg(next)}位）`);
+  });
 }
 
 // 周回コースのシートに、SFCコースと出発する道中コースを並べる
