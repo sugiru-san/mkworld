@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="MKW立ち回り">
+<meta name="apple-mobile-web-app-title" content="MKW Sugiru">
 <meta name="theme-color" content="#262A33">
-<title>マリカーワールド 立ち回りメモ</title>
+<title>MKW Sugiru Path to Platinum</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
@@ -30,7 +30,7 @@
   header { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 6px;
     padding: calc(10px + env(safe-area-inset-top)) 12px 16px; background: var(--asphalt); }
   header::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--curb); }
-  header h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 900; letter-spacing: .02em; }
+  header h1 { flex: 1; min-width: 0; margin: 0; font-size: clamp(15px, 4.4vw, 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 900; letter-spacing: .02em; }
   header h1 span { display: inline-block; transform: skewX(-10deg); }
   button { font: inherit; border: none; border-radius: 10px; padding: 8px 12px; background: var(--pit-high); color: var(--curb-white); cursor: pointer; }
   button.primary { background: var(--curb-red); color: #fff; font-weight: 700; }
@@ -56,11 +56,10 @@
   body.showLabels .spot.view .label { display: block; }
   .spot.edit { border: 2px solid var(--coin); background: rgba(255, 194, 26, .2); touch-action: none; }
   /* 周回・道中・SFC の切り替え：選んでいる方の下にセンターライン */
-  .tabs { display: flex; gap: 4px; margin: 18px 0 10px; background: var(--pit); border-radius: 12px; padding: 4px; }
+  .tabs { display: flex; gap: 4px; margin: 14px 0 10px; background: var(--pit); border-radius: 12px; padding: 4px; }
   .tabs button { flex: 1; position: relative; background: none; color: var(--muted); padding: 10px 4px 13px; font-size: 15px; font-weight: 700; border-radius: 9px; }
   .tabs button.on { background: var(--pit-high); color: var(--curb-white); }
   .tabs button.on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 5px; height: 3px; background: var(--curb); }
-  #search { margin-bottom: 10px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 6px; }
   .grid button, .links button { background: var(--pit); color: var(--curb-white); text-align: left; font-weight: 700; padding: 10px 12px; }
   .grid button small, .links button small { display: block; color: var(--curb-white); font-weight: 400; font-size: 12px; margin-top: 3px; }
@@ -122,6 +121,9 @@
   .sc-edit button { background: var(--pit-high); color: var(--muted); display: inline-flex; align-items: center; gap: 2px; padding: 6px 10px; min-height: 44px; }
   .sc-edit button img { height: 26px; }
   .sc-edit button.on { background: var(--coin); color: var(--asphalt); }
+  /* 前張り/打開 と Ave の行：幅が足りるときは横並び、足りないときは縦に積む */
+  .top-row { display: flex; flex-wrap: wrap; align-items: flex-end; column-gap: 28px; }
+  .top-row > .field { flex: 1 1 280px; min-width: 0; }
   /* 平均順位 */
   .rank-head { display: flex; align-items: center; gap: 10px; }
   .rank-avg { font-size: 34px; font-weight: 900; line-height: 1.1; }
@@ -192,7 +194,7 @@
 </head>
 <body>
 <header>
-  <h1><span>立ち回りメモ</span></h1>
+  <h1><span>MKW Sugiru Path to Platinum</span></h1>
   <button id="syncState" class="sync"></button>
   <button id="modeBtn">編集</button>
   <button id="menuBtn">☰</button>
@@ -208,7 +210,6 @@
     <button data-tab="route">道中 202</button>
     <button data-tab="sfc">SFC 10</button>
   </div>
-  <input type="search" id="search" placeholder="コース名で絞り込み（例：ワリオ）">
   <div class="grid" id="list"></div>
 </main>
 
@@ -255,7 +256,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-02a';
+const APP_VERSION = '2026-11-02b';
 const DEFAULT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
 const OLD_DEFAULT_FIELDS = ['ショートカット', 'アイテムの使い方', '注意ポイント', '参考動画URL', 'フリーメモ'];
 
@@ -765,14 +766,10 @@ function tagsOf(t) {
 // 一覧やリンク用のボタン
 function noteButton(t, label) {
   const b = document.createElement('button');
-  const n = filledCount(t);
   const avg = rankAvg(getRanks(getNotes(t)));
-  const len = t.type === 'route' ? getLength(getNotes(t)) : 0;
-  // 一覧では主要SCのキノコは出さない（コースを開いたときだけ表示）
+  // 一覧に出すのは★とAveだけ（キノコ・入力数・道の長さ・メモあり/未入力は出さない）
   const st = [styleHtml(parseStyle(getNotes(t))), avg ? `Ave ${avg}th` : ''].filter(Boolean).join(' ');
-  // 何項目入力したかの数や道の長さは出さない。★などが無く、文章のメモや道の長さだけのときは「メモあり」
-  const memo = n || len;
-  b.innerHTML = `${nameHtml(label)}<small class="${memo || st ? '' : 'none'}">${st || (memo ? 'メモあり' : '未入力')}</small>`;
+  b.innerHTML = `${nameHtml(label)}${st ? `<small>${st}</small>` : ''}`;
   b.onclick = () => openNote(t);
   return b;
 }
@@ -782,9 +779,8 @@ function render() {
   document.body.classList.toggle('showLabels', !!data.showLabels);
   $('modeBtn').classList.toggle('on', editMode);
   $('modeBtn').textContent = editMode ? '編集中' : '編集';
-  $('hint').textContent = editMode
-    ? '編集モード：枠はドラッグで移動／枠をタップで内容を編集'
-    : 'コースをタップすると立ち回りメモが開きます（そのコースから行ける道中コースもそこから開けます）';
+  $('hint').textContent = editMode ? '編集モード：枠はドラッグで移動／枠をタップで内容を編集' : '';
+  $('hint').hidden = !editMode;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
   renderStage();
   renderList();
@@ -854,19 +850,15 @@ function renderList() {
     list.innerHTML = '<div class="skel"></div>'.repeat(8);
     return;
   }
-  const q = $('search').value.trim();
-  const hit = s => !q || s.includes(q);
   list.innerHTML = '';
   let items = [];
   if (tab === 'course') {
     items = data.courses.slice().sort((a, b) => a.name.localeCompare(b.name, 'ja'))
-      .filter(c => hit(c.name)).map(c => [{ type: 'course', id: c.id }, c.name]);
+      .map(c => [{ type: 'course', id: c.id }, c.name]);
   } else if (tab === 'route') {
-    items = ROUTES.map(([from, to]) => [{ type: 'route', from, to }, `${displayName(from)} → ${displayName(to)}`])
-      .filter(([, label]) => hit(label));
+    items = ROUTES.map(([from, to]) => [{ type: 'route', from, to }, `${displayName(from)} → ${displayName(to)}`]);
   } else {
-    items = Object.entries(SFC_COURSES).flatMap(([parent, names]) => names.map(n => [{ type: 'sfc', name: n }, n, parent]))
-      .filter(([, n, parent]) => hit(n) || hit(parent)).map(([t, n]) => [t, n]);
+    items = Object.values(SFC_COURSES).flat().map(n => [{ type: 'sfc', name: n }, n]);
   }
   if (!items.length) { list.innerHTML = '<p class="hint">該当するコースがありません</p>'; return; }
   for (const [t, label] of items) list.appendChild(noteButton(t, label));
@@ -891,9 +883,8 @@ function openNote(t, asEdit = false, focusField = null) {
     const st = styleHtml(parseStyle(notes), true);
     sheet.innerHTML = back + chips + `<h3><span class="title">${nameHtml(titleOf(t))}</span></h3>` +
       // 見出しは付けず、未入力のときは空の☆を薄く出す
-      '<div class="field"><div class="body" id="styleView"></div></div>' +
+      '<div class="top-row"><div class="field"><div class="body" id="styleView"></div></div><div class="field" id="rankBox"></div></div>' +
       (t.type === 'route' ? '<div class="field"><div class="body" id="lengthView"></div></div>' : '') +
-      '<div class="field" id="rankBox"></div>' +
       data.fields.map(f => {
       if (f === KILLER_FIELD) {
         const list = getKillerList(notes);
@@ -909,7 +900,7 @@ function openNote(t, asEdit = false, focusField = null) {
           const pos = scPosText(x);
           return `<div class="sc-item"><div class="body">${pos ? `<span class="pos">${esc(pos)}</span>` : ''}${x.text ? `<div class="${pos ? 'memo' : ''}">${linkify(x.text)}</div>` : ''}</div>${scHtml(x.need, true)}</div>`;
         }).join('');
-        return `<div class="field" data-edit="${esc(f)}"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">（未入力）</div>'}</div>`;
+        return `<div class="field" data-edit="${esc(f)}"><div class="name">${esc(f)}${list.length > 1 ? `（${list.length}）` : ''}</div>${items || '<div class="body blank">タップして入力</div>'}</div>`;
       }
       const v = (notes[f] || '').trim();
       if (POINT_PICKS[f]) {
@@ -1218,7 +1209,6 @@ document.addEventListener('keydown', e => {
 
 // ---------- 一覧のタブ・検索 ----------
 document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
-$('search').oninput = renderList;
 
 // ---------- ヘッダー・メニュー ----------
 $('modeBtn').onclick = () => { editMode = !editMode; render(); };
