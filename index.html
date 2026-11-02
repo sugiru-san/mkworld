@@ -232,6 +232,14 @@
   .progress summary { list-style: none; cursor: pointer; }
   .progress summary::-webkit-details-marker { display: none; }
   .progress .done-list { font-size: 13px; color: var(--muted); line-height: 1.7; margin: 6px 0 4px 4.2em; }
+  /* 人気コースランキング */
+  .ranking-row { display: grid; grid-template-columns: 2em 1fr auto; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: var(--pit-high); margin-bottom: 6px; padding: 10px 12px; }
+  .ranking-row .no { font-size: 20px; font-weight: 900; color: var(--muted); text-align: center; }
+  .ranking-row:first-child .no { color: var(--coin); }
+  .ranking-row .nm { font-weight: 700; word-break: keep-all; overflow-wrap: anywhere; }
+  .ranking-row .ct { font-size: 13px; color: var(--muted); font-weight: 700; text-align: right; white-space: nowrap; }
+  .progress .races { font-size: 13px; color: var(--muted); font-weight: 700; margin: -4px 0 8px; }
   .menu button { display: block; width: 100%; margin-bottom: 8px; text-align: left; background: var(--pit-high); color: var(--curb-white); }
 </style>
 </head>
@@ -266,6 +274,7 @@
 <!-- メニューシート -->
 <div class="sheet-bg" id="menuBg"><div class="sheet menu">
   <h3>メニュー</h3>
+  <button id="mRanking">🏁 人気コースランキング（よく走るコース TOP5）</button>
   <button id="mSync">☁ GitHub同期の設定</button>
   <button id="mImage">🖼 背景画像（コース選択画面）を変更</button>
   <button id="mLabels">🏷 閲覧モードでコース名を表示：<span id="labelState"></span></button>
@@ -277,6 +286,14 @@
   <button class="danger" id="mClose">閉じる</button>
   <div id="progress" class="progress"></div>
   <p class="hint" id="appVersion"></p>
+</div></div>
+
+<!-- 人気コースランキングのシート -->
+<div class="sheet-bg" id="rankingBg"><div class="sheet">
+  <h3>人気コースランキング</h3>
+  <p class="note">順位を記録した回数が多い順（周回・道中・SFCすべて）</p>
+  <div id="rankingList"></div>
+  <div class="row"><button id="rankingClose">閉じる</button></div>
 </div></div>
 
 <!-- GitHub同期の設定シート -->
@@ -304,7 +321,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-03d';
+const APP_VERSION = '2026-11-03e';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -822,7 +839,7 @@ function tplHtml(type) {
   const row = (vals, cls = '', show = v => esc(v), insert = v => v) => `<div class="opts">${vals.map(v => `<button type="button" class="${cls}" data-tpl="${esc(insert(v))}">${show(v)}</button>`).join('')}</div>`;
   // 「-」の付かない番号は「4」を押すと「4のアイテム」と入る（「2-3」などはそのまま）
   const boxInsert = v => v.includes('-') ? v : `${v}のアイテム`;
-  return `<div class="tpl">${row(SC_BOXES[type], '', v => esc(v), boxInsert)}${row(SC_SIDES_FB)}${row(SC_SIDES_LR)}${row(TPL_ITEMS, '', v => richText(v))}${row(TPL_WORDS, 'word')}${row(['改行'], 'word', () => '⏎ 改行')}</div>`;
+  return `<div class="tpl">${row(SC_BOXES[type], '', v => esc(v), boxInsert)}${row(SC_SIDES_FB)}${row(SC_SIDES_LR)}${row(TPL_ITEMS, '', v => richText(v))}${row(TPL_WORDS, 'word')}</div>`;
 }
 // カーソルの位置に言葉を入れる（キーボードを閉じないよう、ボタンを押してもフォーカスは入力欄のまま）
 function bindTpl(box, ta) {
@@ -860,8 +877,8 @@ function mergeIntoTachimawari(notes) {
 // アイテム番号の種類。周回のノコノコビーチは、SFCコースではないがアイテムの並びがSFCと同じ
 const boxType = t => t.type === 'course' && data.courses.find(c => c.id === t.id)?.key === 'ノコノコビーチ' ? 'sfc' : t.type;
 
-// サンダーの番号：道中は5〜10、周回・SFCはアイテムと同じ
-const THUNDER_BOXES = { ...SC_BOXES, route: ['5', '6', '7', '8', '9', '10'] };
+// サンダーの番号：道中は5〜10、周回は「2-1」などだけ、SFCはアイテムと同じ
+const THUNDER_BOXES = { ...SC_BOXES, course: SC_BOXES.course.filter(v => v.includes('-')), route: ['5', '6', '7', '8', '9', '10'] };
 
 function upgradeMerged(d) {
   let changed = false;
@@ -1179,21 +1196,7 @@ function openNote(t, asEdit = false, focusField = null) {
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
         : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(boxType(t))}`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
-      (course && data.image ? `
-        <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
-        <label class="slider">枠の高さ <input type="range" id="cH" min="3" max="50" step="0.5" value="${course.h}"></label>` : '') +
       `<div class="row"><button class="danger" id="delN">メモを消す</button><button class="primary" id="saveN">保存</button></div>`;
-    if (course && data.image) {
-      // スライダーで枠サイズを変えるとすぐ背景上に反映
-      const live = () => {
-        course.w = +$('cW').value; course.h = +$('cH').value;
-        course.x = clamp(course.x, 0, 100 - course.w); course.y = clamp(course.y, 0, 100 - course.h);
-        touchCourse(course);
-        renderStage();
-      };
-      $('cW').oninput = live;
-      $('cH').oninput = live;
-    }
     // 前張り ★★★★★ 打開。タップした位置までが打開度
     let style = parseStyle(notes);
     const drawStyle = () => {
@@ -1446,6 +1449,7 @@ document.addEventListener('keydown', e => {
   const open = id => $(id).classList.contains('open');
   if (e.key === 'Escape') {
     if (open('syncBg')) $('syncBg').classList.remove('open');
+    else if (open('rankingBg')) $('rankingBg').classList.remove('open');
     else if (open('menuBg')) closeMenu();
     else if (open('noteBg') && currentNote) {
       if (currentNote.asEdit) openNote(currentNote.t, false);   // 編集 → 表示（保存はしない）
@@ -1475,6 +1479,29 @@ document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tab =
 $('modeBtn').onclick = () => { editMode = !editMode; render(); };
 // 入力済み＝順位の記録以外に何か入っているコース
 const hasMemo = t => Object.entries(getNotes(t)).some(([k, v]) => k !== RANK_KEY && k !== THUNDER_LOG_KEY && String(v).trim());
+// 周回（正式名30）・道中・SFCのすべて
+function allTargets() {
+  const courses = OFFICIAL_NAMES.map(key => data.courses.find(c => c.key === key)).filter(Boolean)
+    .map(c => ({ t: { type: 'course', id: c.id }, label: c.name }));
+  const routes = ROUTES.map(([from, to]) => ({ t: { type: 'route', from, to }, label: `${displayName(from)} → ${displayName(to)}` }));
+  const sfcs = Object.values(SFC_COURSES).flat().map(name => ({ t: { type: 'sfc', name }, label: name }));
+  return [...courses, ...routes, ...sfcs];
+}
+// よく走るコース TOP5（順位を記録した回数が多い順。同じ回数ならAveが良い順）
+function renderRanking() {
+  const top = allTargets().map(x => ({ ...x, ranks: getRanks(getNotes(x.t)) })).filter(x => x.ranks.length)
+    .sort((a, b) => b.ranks.length - a.ranks.length || rankAvg(a.ranks) - rankAvg(b.ranks)).slice(0, 5);
+  const list = $('rankingList');
+  list.innerHTML = top.length ? '' : '<p class="hint">まだ順位の記録がありません</p>';
+  top.forEach((x, i) => {
+    const b = document.createElement('button');
+    b.className = 'ranking-row';
+    b.innerHTML = `<span class="no">${i + 1}</span><span class="nm">${nameHtml(x.label)}</span><span class="ct">${x.ranks.length}回<br>Ave ${rankAvg(x.ranks)}th</span>`;
+    b.onclick = () => { $('rankingBg').classList.remove('open'); openNote(x.t); };
+    list.appendChild(b);
+  });
+}
+
 function renderProgress() {
   // 周回は正式名30コースで数える（同じコースの枠が複数あっても、どれかにメモがあれば1コース）
   const courseDone = OFFICIAL_NAMES.filter(key => data.courses.some(c => c.key === key && hasMemo({ type: 'course', id: c.id })));
@@ -1487,10 +1514,14 @@ function renderProgress() {
   ];
   const done = groups.reduce((a, g) => a + g[1].length, 0), all = groups.reduce((a, g) => a + g[2], 0);
   // 行をタップすると、入力済みのコース名が開く（端末どうしで数がずれたときの見比べ用）
-  $('progress').innerHTML = `<div class="total">入力済み <b>${done}</b> / ${all} コース</div>` +
+  const races = allTargets().reduce((a, x) => a + getRanks(getNotes(x.t)).length, 0);
+  $('progress').innerHTML = `<div class="total">入力済み <b>${done}</b> / ${all} コース</div><div class="races">記録したレース数 ${races}</div>` +
     groups.map(([label, names, total]) => `<details><summary class="row2"><span>${label}</span><span class="bar"><i style="width:${total ? names.length / total * 100 : 0}%"></i></span><span class="num">${names.length} / ${total}</span></summary>
       <div class="done-list">${names.map(n => esc(n)).join('<br>') || 'まだありません'}</div></details>`).join('');
 }
+$('mRanking').onclick = () => { closeMenu(); renderRanking(); $('rankingBg').classList.add('open'); };
+$('rankingClose').onclick = () => $('rankingBg').classList.remove('open');
+$('rankingBg').onclick = e => { if (e.target.id === 'rankingBg') $('rankingBg').classList.remove('open'); };
 $('menuBtn').onclick = () => { $('labelState').textContent = data.showLabels ? 'ON' : 'OFF'; renderProgress(); $('menuBg').classList.add('open'); };
 const closeMenu = () => $('menuBg').classList.remove('open');
 $('mClose').onclick = closeMenu;
