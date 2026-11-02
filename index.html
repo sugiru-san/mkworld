@@ -304,7 +304,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-03b';
+const APP_VERSION = '2026-11-03c';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -816,7 +816,7 @@ const LENGTH_KEY = '道の長さ';
 const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LENGTH_KEY] : 0;
 
 // 立ち回りのタップで入れる言葉。番号はコースの種類で変わる
-const TPL_WORDS = ['SC', 'ショトカ', '前入場', '入場前', '入場直後', 'グライダー', '無敵', 'コイン集め', '運搬', '前戻り'];
+const TPL_WORDS = ['SC', 'CJ', '前入場', '入場前', '入場直後', 'グライダー', '無敵', 'コイン集め', '運搬', '前戻り'];
 const TPL_ITEMS = ['キノ1', 'キノ2', 'キノ3', '金キノ', 'ハネ', 'キラー'];
 function tplHtml(type) {
   const row = (vals, cls = '', show = v => esc(v), insert = v => v) => `<div class="opts">${vals.map(v => `<button type="button" class="${cls}" data-tpl="${esc(insert(v))}">${show(v)}</button>`).join('')}</div>`;
