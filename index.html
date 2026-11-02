@@ -180,14 +180,15 @@
   .tok-pair .tok { vertical-align: 0; margin: 0; }
   .tok-pair .tok + .tok { margin-left: -0.75em; }
   /* 定型の言葉をタップで入れるボタン */
-  .tpl { margin-top: 8px; display: grid; gap: 6px; }
+  .tpl { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
   .tachi-preview { white-space: pre-wrap; line-height: 1.8; word-break: break-word; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
     border: 1px dashed var(--pit-high); font-size: 15px; }
   .tachi-preview:empty { display: none; }
-  .tpl .opts { display: flex; flex-wrap: wrap; gap: 5px; }
-  .tpl button { background: var(--pit-high); color: var(--curb-white); font-weight: 700; font-size: 14px; min-height: 38px; padding: 4px 10px;
+  .tpl .opts { display: contents; }  /* グループごとに改行せず、続けて並べる */
+  .tpl button { background: var(--pit-high); color: var(--curb-white); font-weight: 700; font-size: 13px; min-height: 36px; padding: 3px 9px;
     display: inline-flex; align-items: center; gap: 2px; }
-  .tpl button img { height: 24px; }
+  .tpl button img { height: 22px; }
+  .lap-br { flex-basis: 100%; height: 0; }
   .tpl button.word { background: var(--pit); border: 1px solid var(--pit-high); }
   .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
   .links button { background: var(--pit-high); }
@@ -324,7 +325,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-03f';
+const APP_VERSION = '2026-11-03g';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -844,7 +845,7 @@ function tplHtml(type) {
   const row = (vals, cls = '', show = v => esc(v), insert = v => v) => `<div class="opts">${vals.map(v => `<button type="button" class="${cls}" data-tpl="${esc(insert(v))}">${show(v)}</button>`).join('')}</div>`;
   // 「-」の付かない番号は「4」を押すと「4のアイテム」と入る（「2-3」などはそのまま）
   const boxInsert = v => v.includes('-') ? v : `${v}のアイテム`;
-  return `<div class="tpl">${row(SC_BOXES[type], '', v => esc(v), boxInsert)}${row(SC_SIDES_FB)}${row(SC_SIDES_LR)}${row(TPL_ITEMS, '', v => richText(v))}${row(TPL_WORDS, 'word')}</div>`;
+  return `<div class="tpl">${row(SC_BOXES[type], '', v => esc(v), boxInsert)}${row(SC_SIDES_FB)}${row(SC_SIDES_LR)}${row(TPL_WORDS, 'word')}${row(TPL_ITEMS, '', v => richText(v))}</div>`;
 }
 // カーソルの位置に言葉を入れる（キーボードを閉じないよう、ボタンを押してもフォーカスは入力欄のまま）
 function bindTpl(box, ta) {
@@ -880,6 +881,11 @@ function mergeIntoTachimawari(notes) {
 }
 // 保存データ全体をまとめた形にする（項目の並びも新しくする）
 // アイテム番号の種類。周回のノコノコビーチは、SFCコースではないがアイテムの並びがSFCと同じ
+// 「2-3」→「3-1」のように周回が変わる所で改行を入れる（サンダーの番号ボタン用）
+const lapRows = (values, btn) => values.map((v, i) => {
+  const lap = v.split('-')[0], prev = i ? values[i - 1].split('-')[0] : lap;
+  return (v.includes('-') && lap !== prev ? '<span class="lap-br"></span>' : '') + btn(v);
+}).join('');
 const boxType = t => t.type === 'course' && data.courses.find(c => c.id === t.id)?.key === 'ノコノコビーチ' ? 'sfc' : t.type;
 
 // サンダーの番号：道中は4〜10、周回は「2-1」などだけ、SFCはアイテムと同じ
@@ -1302,8 +1308,8 @@ function openNote(t, asEdit = false, focusField = null) {
       const f = box.dataset.pick;
       picks[f] = getPick(notes, f);
       const draw = () => {
-        const row = (key, label, values) => `<div class="lbl">${label}</div><div class="opts">${values.map(v =>
-          `<button class="${picks[f][key] === v ? 'on' : ''}" data-key="${key}" data-v="${v}">${esc(v)}</button>`).join('')}</div>`;
+        const row = (key, label, values) => `<div class="lbl">${label}</div><div class="opts">${lapRows(values, v =>
+          `<button class="${picks[f][key] === v ? 'on' : ''}" data-key="${key}" data-v="${v}">${esc(v)}</button>`)}</div>`;
         box.innerHTML = row('box', 'アイテム', THUNDER_BOXES[boxType(t)]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
         box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
           const k = b.dataset.key;
@@ -1376,7 +1382,7 @@ function renderThunder(t, padOpen = false) {
     `<div class="thunder-head">${dist.length
       ? `<div class="thunder-dist">${dist.map(([b, n], i) => `<span class="${i === 0 ? 'top' : ''}">${esc(b)}<small>${Math.round(n / log.length * 100)}%</small></span>`).join('')}</div>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
-    (padOpen ? `<div class="thunder-pad">${THUNDER_BOXES[boxType(t)].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
+    (padOpen ? `<div class="thunder-pad">${lapRows(THUNDER_BOXES[boxType(t)], b => `<button data-box="${b}">${esc(b)}</button>`)}</div>` : '');
   const save = next => {
     setNotes(t, { ...getNotes(t), [THUNDER_LOG_KEY]: next.length ? JSON.stringify(next) : '' });
     saveData();
