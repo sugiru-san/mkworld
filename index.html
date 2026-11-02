@@ -304,7 +304,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-03c';
+const APP_VERSION = '2026-11-03d';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -816,7 +816,7 @@ const LENGTH_KEY = '道の長さ';
 const getLength = notes => /^[1-5]$/.test(notes?.[LENGTH_KEY] || '') ? +notes[LENGTH_KEY] : 0;
 
 // 立ち回りのタップで入れる言葉。番号はコースの種類で変わる
-const TPL_WORDS = ['SC', 'CJ', '前入場', '入場前', '入場直後', 'グライダー', '無敵', 'コイン集め', '運搬', '前戻り'];
+const TPL_WORDS = ['SC', 'CJ'];
 const TPL_ITEMS = ['キノ1', 'キノ2', 'キノ3', '金キノ', 'ハネ', 'キラー'];
 function tplHtml(type) {
   const row = (vals, cls = '', show = v => esc(v), insert = v => v) => `<div class="opts">${vals.map(v => `<button type="button" class="${cls}" data-tpl="${esc(insert(v))}">${show(v)}</button>`).join('')}</div>`;
@@ -857,6 +857,9 @@ function mergeIntoTachimawari(notes) {
   return true;
 }
 // 保存データ全体をまとめた形にする（項目の並びも新しくする）
+// アイテム番号の種類。周回のノコノコビーチは、SFCコースではないがアイテムの並びがSFCと同じ
+const boxType = t => t.type === 'course' && data.courses.find(c => c.id === t.id)?.key === 'ノコノコビーチ' ? 'sfc' : t.type;
+
 // サンダーの番号：道中は5〜10、周回・SFCはアイテムと同じ
 const THUNDER_BOXES = { ...SC_BOXES, route: ['5', '6', '7', '8', '9', '10'] };
 
@@ -1174,7 +1177,7 @@ function openNote(t, asEdit = false, focusField = null) {
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : f === KILLER_FIELD ? '<div id="killerList"></div><button class="sc-add" id="killerAdd">＋ キラーを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
-        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(t.type)}`
+        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(boxType(t))}`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       (course && data.image ? `
         <label class="slider">枠の幅 <input type="range" id="cW" min="3" max="50" step="0.5" value="${course.w}"></label>
@@ -1226,7 +1229,7 @@ function openNote(t, asEdit = false, focusField = null) {
         <div class="sc-row">
           <div class="head">SC ${i + 1}<button class="del" data-del="${i}">削除</button></div>
           <div class="sc-pick">
-            ${pickRow(i, 'box', 'アイテム', SC_BOXES[t.type])}
+            ${pickRow(i, 'box', 'アイテム', SC_BOXES[boxType(t)])}
             ${pickRow(i, 'fb', '前後', SC_SIDES_FB)}
             ${pickRow(i, 'lr', '左右', SC_SIDES_LR)}
             ${pickRow(i, 'need', '必要', SC_OPTIONS, v => scHtml(v))}
@@ -1259,7 +1262,7 @@ function openNote(t, asEdit = false, focusField = null) {
       $('killerList').innerHTML = killerItems.map((x, i) => `
         <div class="sc-row">
           <div class="head">キラー ${i + 1}<button class="del" data-del="${i}">削除</button></div>
-          <div class="sc-pick">${row(i, 'box', 'アイテム', SC_BOXES[t.type])}${row(i, 'fb', '前後', SC_SIDES_FB)}</div>
+          <div class="sc-pick">${row(i, 'box', 'アイテム', SC_BOXES[boxType(t)])}${row(i, 'fb', '前後', SC_SIDES_FB)}</div>
           <textarea data-killer-text="${i}" placeholder="補足（任意）">${esc(x.text)}</textarea>
         </div>`).join('');
       $('killerList').querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
@@ -1293,7 +1296,7 @@ function openNote(t, asEdit = false, focusField = null) {
       const draw = () => {
         const row = (key, label, values) => `<div class="lbl">${label}</div><div class="opts">${values.map(v =>
           `<button class="${picks[f][key] === v ? 'on' : ''}" data-key="${key}" data-v="${v}">${esc(v)}</button>`).join('')}</div>`;
-        box.innerHTML = row('box', 'アイテム', THUNDER_BOXES[t.type]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
+        box.innerHTML = row('box', 'アイテム', THUNDER_BOXES[boxType(t)]) + (POINT_PICKS[f].fb ? row('fb', '前後', SC_SIDES_FB) : '');
         box.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
           const k = b.dataset.key;
           picks[f][k] = picks[f][k] === b.dataset.v ? '' : b.dataset.v;
@@ -1365,7 +1368,7 @@ function renderThunder(t, padOpen = false) {
     `<div class="thunder-head">${dist.length
       ? `<div class="thunder-dist">${dist.map(([b, n], i) => `<span class="${i === 0 ? 'top' : ''}">${esc(b)}<small>${Math.round(n / log.length * 100)}%</small></span>`).join('')}</div>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
-    (padOpen ? `<div class="thunder-pad">${THUNDER_BOXES[t.type].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
+    (padOpen ? `<div class="thunder-pad">${THUNDER_BOXES[boxType(t)].map(b => `<button data-box="${b}">${esc(b)}</button>`).join('')}</div>` : '');
   const save = next => {
     setNotes(t, { ...getNotes(t), [THUNDER_LOG_KEY]: next.length ? JSON.stringify(next) : '' });
     saveData();
