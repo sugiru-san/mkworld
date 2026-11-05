@@ -180,6 +180,8 @@
   .tok-pair .tok { vertical-align: 0; margin: 0; }
   .tok-pair .tok + .tok { margin-left: -0.75em; }
   /* 定型の言葉をタップで入れるボタン */
+  /* 立ち回りの入力欄：約3.5行分の高さ（必要なら右下で広げられる） */
+  #tachiInput { height: calc(3.5 * 1.6em + 24px); min-height: 0; }
   .tpl { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
   .tachi-preview { white-space: pre-wrap; line-height: 1.8; word-break: break-word; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
     border: 1px dashed var(--pit-high); font-size: 15px; }
@@ -325,7 +327,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-03g';
+const APP_VERSION = '2026-11-05a';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -1205,7 +1207,7 @@ function openNote(t, asEdit = false, focusField = null) {
       data.fields.map((f, i) => `<div class="field" data-field="${esc(f)}"><div class="name">${fieldLabel(f)}</div>${f === SC_FIELD ? '<div id="scList"></div><button class="sc-add" id="scAdd">＋ SCを追加</button>'
         : f === KILLER_FIELD ? '<div id="killerList"></div><button class="sc-add" id="killerAdd">＋ キラーを追加</button>'
         : POINT_PICKS[f] ? `<div class="sc-pick" data-pick="${esc(f)}"></div><textarea data-f="${i}" placeholder="補足（任意）">${esc(notes[f] || '')}</textarea>`
-        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput" rows="5">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(boxType(t))}`
+        : f === '立ち回り' ? `<textarea data-f="${i}" id="tachiInput">${esc(notes[f] || '')}</textarea><div class="tachi-preview" id="tachiPreview"></div>${tplHtml(boxType(t))}`
         : `<textarea data-f="${i}">${esc(notes[f] || '')}</textarea>`}</div>`).join('') +
       `<div class="row"><button class="danger" id="delN">メモを消す</button><button class="primary" id="saveN">保存</button></div>`;
     // 前張り ★★★★★ 打開。タップした位置までが打開度
