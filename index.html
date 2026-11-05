@@ -180,8 +180,8 @@
   .tok-pair .tok { vertical-align: 0; margin: 0; }
   .tok-pair .tok + .tok { margin-left: -0.75em; }
   /* 定型の言葉をタップで入れるボタン */
-  /* 立ち回りの入力欄：約3.5行分の高さ（必要なら右下で広げられる） */
-  #tachiInput { height: calc(3.5 * 1.6em + 24px); min-height: 0; }
+  /* 立ち回りの入力欄：約2.5行分の高さ（必要なら右下で広げられる） */
+  #tachiInput { height: calc(2.5 * 1.6em + 24px); min-height: 0; }
   .tpl { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
   .tachi-preview { white-space: pre-wrap; line-height: 1.8; word-break: break-word; margin-top: 6px; padding: 8px 10px; border-radius: 10px;
     border: 1px dashed var(--pit-high); font-size: 15px; }
@@ -327,7 +327,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-05a';
+const APP_VERSION = '2026-11-05b';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
