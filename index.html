@@ -245,7 +245,7 @@
   .ranking-row { display: grid; grid-template-columns: 2em 1fr auto; align-items: center; gap: 10px; width: 100%; text-align: left;
     background: var(--pit-high); margin-bottom: 6px; padding: 10px 12px; }
   .ranking-row .no { font-size: 20px; font-weight: 900; color: var(--muted); text-align: center; }
-  .ranking-row:first-child .no, h4 + .ranking-row .no { color: var(--coin); }
+  .ranking-row:first-child .no { color: var(--coin); }
   .ranking-row .nm { font-weight: 700; word-break: keep-all; overflow-wrap: anywhere; }
   .ranking-row .ct { font-size: 13px; color: var(--muted); font-weight: 700; text-align: right; white-space: nowrap; }
   .progress .races { font-size: 13px; color: var(--muted); font-weight: 700; margin: -4px 0 8px; }
@@ -283,8 +283,7 @@
 <!-- メニューシート -->
 <div class="sheet-bg" id="menuBg"><div class="sheet menu">
   <h3>メニュー</h3>
-  <button id="mRanking">🏁 人気コースランキング（よく走るコース TOP5）</button>
-  <button id="mTokui">📊 得意コース・苦手コース TOP5</button>
+  <button id="mRanking">🏁 ランキング（人気・得意・苦手）</button>
   <button id="mSync">☁ GitHub同期の設定</button>
   <button id="mImage">🖼 背景画像（コース選択画面）を変更</button>
   <button id="mLabels">🏷 閲覧モードでコース名を表示：<span id="labelState"></span></button>
@@ -300,7 +299,12 @@
 
 <!-- 人気コースランキングのシート -->
 <div class="sheet-bg" id="rankingBg"><div class="sheet">
-  <h3 id="rankingTitle">人気コースランキング</h3>
+  <h3>ランキング</h3>
+  <div class="tabs" id="rankingTabs">
+    <button data-rtab="popular">人気</button>
+    <button data-rtab="good">得意</button>
+    <button data-rtab="bad">苦手</button>
+  </div>
   <p class="note" id="rankingNote"></p>
   <div id="rankingList"></div>
   <div class="row"><button id="rankingClose">閉じる</button></div>
@@ -331,7 +335,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-23b';
+const APP_VERSION = '2026-11-23c';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -1532,43 +1536,31 @@ function tokuiDev(ranks, st = tokuiStats()) {
 const tokuiText = d => d === null ? '' : String(Math.round(d));
 
 // よく走るコース TOP5（順位を記録した回数が多い順。同じ回数ならAveが良い順）
-function renderTokui() {
+// ランキング画面。人気＝順位を記録した回数が多い順、得意／苦手＝得意度（偏差値）の高い順／低い順
+let rankingTab = 'popular';
+function renderRankingSheet() {
+  document.querySelectorAll('#rankingTabs button').forEach(b => b.classList.toggle('on', b.dataset.rtab === rankingTab));
   const st = tokuiStats();
-  const scored = allTargets().map(x => ({ ...x, ranks: getRanks(getNotes(x.t)) })).filter(x => x.ranks.length)
-    .map(x => ({ ...x, score: tokuiDev(x.ranks, st) }));
-  const list = $('rankingList');
-  list.innerHTML = '';
-  if (!scored.length) { list.innerHTML = '<p class="hint">まだ順位の記録がありません</p>'; return; }
-  const section = (title, rows) => {
-    list.insertAdjacentHTML('beforeend', `<h4>${title}</h4>`);
-    rows.forEach((x, i) => {
-      const b = document.createElement('button');
-      b.className = 'ranking-row';
-      b.innerHTML = `<span class="no">${i + 1}</span><span class="nm">${nameHtml(x.label)}</span><span class="ct">得意度 ${tokuiText(x.score)}<br>${x.ranks.length}回 Ave ${rankAvg(x.ranks)}th</span>`;
-      b.onclick = () => { $('rankingBg').classList.remove('open'); openNote(x.t); };
-      list.appendChild(b);
-    });
+  const rows = allTargets().map(x => ({ ...x, ranks: getRanks(getNotes(x.t)) })).filter(x => x.ranks.length)
+    .map(x => ({ ...x, dev: tokuiDev(x.ranks, st) }));
+  const notes = {
+    popular: '順位を記録した回数が多い順（周回・道中・SFCすべて）',
+    good: '得意度（偏差値）が高い順。50が自分の平均的なコース、60以上でかなり得意',
+    bad: '得意度（偏差値）が低い順。40以下はかなり苦手。走った回数が少ないコースは控えめに評価します',
   };
-  const sorted = scored.slice().sort((a, b) => b.score - a.score);
-  section('得意コース TOP5', sorted.filter(x => Math.round(x.score) > 50).slice(0, 5));
-  section('苦手コース TOP5', sorted.filter(x => Math.round(x.score) < 50).reverse().slice(0, 5));
-}
-function openListSheet(title, note, draw) {
-  $('rankingTitle').textContent = title;
-  $('rankingNote').textContent = note;
-  draw();
-  $('rankingBg').classList.add('open');
-}
-
-function renderRanking() {
-  const top = allTargets().map(x => ({ ...x, ranks: getRanks(getNotes(x.t)) })).filter(x => x.ranks.length)
-    .sort((a, b) => b.ranks.length - a.ranks.length || rankAvg(a.ranks) - rankAvg(b.ranks)).slice(0, 5);
+  $('rankingNote').textContent = notes[rankingTab] + (rankingTab === 'popular' ? '' : `（全体のAve ${overallAve().toFixed(1)}th）`);
+  const sorted = rankingTab === 'popular'
+    ? rows.sort((a, b) => b.ranks.length - a.ranks.length || rankAvg(a.ranks) - rankAvg(b.ranks))
+    : rankingTab === 'good' ? rows.filter(x => Math.round(x.dev) > 50).sort((a, b) => b.dev - a.dev)
+    : rows.filter(x => Math.round(x.dev) < 50).sort((a, b) => a.dev - b.dev);
   const list = $('rankingList');
-  list.innerHTML = top.length ? '' : '<p class="hint">まだ順位の記録がありません</p>';
-  top.forEach((x, i) => {
+  list.innerHTML = sorted.length ? '' : `<p class="hint">${rows.length ? '当てはまるコースはまだありません' : 'まだ順位の記録がありません'}</p>`;
+  sorted.forEach((x, i) => {
     const b = document.createElement('button');
     b.className = 'ranking-row';
-    b.innerHTML = `<span class="no">${i + 1}</span><span class="nm">${nameHtml(x.label)}</span><span class="ct">${x.ranks.length}回<br>Ave ${rankAvg(x.ranks)}th</span>`;
+    const main = rankingTab === 'popular' ? `${x.ranks.length}回` : `得意度 ${tokuiText(x.dev)}`;
+    const sub = rankingTab === 'popular' ? `Ave ${rankAvg(x.ranks)}th` : `${x.ranks.length}回 Ave ${rankAvg(x.ranks)}th`;
+    b.innerHTML = `<span class="no">${i + 1}</span><span class="nm">${nameHtml(x.label)}</span><span class="ct">${main}<br>${sub}</span>`;
     b.onclick = () => { $('rankingBg').classList.remove('open'); openNote(x.t); };
     list.appendChild(b);
   });
@@ -1591,11 +1583,8 @@ function renderProgress() {
     groups.map(([label, names, total]) => `<details><summary class="row2"><span>${label}</span><span class="bar"><i style="width:${total ? names.length / total * 100 : 0}%"></i></span><span class="num">${names.length} / ${total}</span></summary>
       <div class="done-list">${names.map(n => esc(n)).join('<br>') || 'まだありません'}</div></details>`).join('');
 }
-$('mRanking').onclick = () => { closeMenu(); openListSheet('人気コースランキング', '順位を記録した回数が多い順（周回・道中・SFCすべて）', renderRanking); };
-$('mTokui').onclick = () => {
-  closeMenu();
-  openListSheet('得意コース・苦手コース', `得意度は偏差値（50が自分の平均的なコース、60以上でかなり得意）。走った回数が少ないコースは控えめに評価します（全体のAve ${overallAve().toFixed(1)}th）`, renderTokui);
-};
+$('mRanking').onclick = () => { closeMenu(); renderRankingSheet(); $('rankingBg').classList.add('open'); $('rankingBg').querySelector('.sheet').scrollTop = 0; };
+document.querySelectorAll('#rankingTabs button').forEach(b => b.onclick = () => { rankingTab = b.dataset.rtab; renderRankingSheet(); });
 $('rankingClose').onclick = () => $('rankingBg').classList.remove('open');
 $('rankingBg').onclick = e => { if (e.target.id === 'rankingBg') $('rankingBg').classList.remove('open'); };
 $('menuBtn').onclick = () => { $('labelState').textContent = data.showLabels ? 'ON' : 'OFF'; renderProgress(); $('menuBg').classList.add('open'); };
