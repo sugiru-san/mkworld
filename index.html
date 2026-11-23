@@ -335,7 +335,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-23d';
+const APP_VERSION = '2026-11-23e';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -1418,7 +1418,7 @@ function renderRank(t, padOpen = false) {
   // 平均と戦数を左、「＋記録」「取り消し」を右に1行で並べる
   const actions = `<span class="rank-actions">${ranks.length ? '<button class="undo" id="rankUndo">取り消し</button>' : ''}<button id="rankAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
   box.innerHTML = `<div class="name">Ave</div>` +
-    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>th</small></span><span class="rank-n">${ranks.length}戦</span>${ranks.length >= RANK_MIN_RACES ? `<span class="tokui ${tokuiDev(ranks) >= 50 ? 'plus' : 'minus'}">得意度 ${tokuiText(tokuiDev(ranks))}</span>` : `<span class="tokui minus">得意度は${RANK_MIN_RACES}戦から</span>`}`
+    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>th</small></span><span class="rank-n">${ranks.length}戦</span>${ranks.length >= RANK_MIN_RACES ? `<span class="tokui ${tokuiDev(ranks) >= 50 ? 'plus' : 'minus'}">得意度 ${tokuiText(tokuiDev(ranks))}</span>` : ''}`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
     // 過去の順位は平均の計算用に保存するだけで、一覧表示はしない
     (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}<small>${ordSuffix(i + 1)}</small></button>`).join('')}</div>` : '');
