@@ -331,7 +331,7 @@
 <script>
 const STORAGE_KEY = 'mkworld-notes-v1';
 // 更新したら日付を変える（古い画面がキャッシュで残っていないか、メニューで確かめるため）
-const APP_VERSION = '2026-11-23a';
+const APP_VERSION = '2026-11-23b';
 const DEFAULT_FIELDS = ['立ち回り', 'サンダーポイント'];
 // 立ち回り・主要SC・キラーポイントが別々だった頃の項目（読み込み時に立ち回りへまとめる）
 const SPLIT_FIELDS = ['立ち回り', '主要SC', 'キラーポイント', 'サンダーポイント'];
@@ -1414,7 +1414,7 @@ function renderRank(t, padOpen = false) {
   // 平均と戦数を左、「＋記録」「取り消し」を右に1行で並べる
   const actions = `<span class="rank-actions">${ranks.length ? '<button class="undo" id="rankUndo">取り消し</button>' : ''}<button id="rankAdd">${padOpen ? '閉じる' : '＋ 記録'}</button></span>`;
   box.innerHTML = `<div class="name">Ave</div>` +
-    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>th</small></span><span class="rank-n">${ranks.length}戦</span><span class="tokui ${tokuiScore(ranks) >= 0 ? 'plus' : 'minus'}">得意度 ${tokuiText(tokuiScore(ranks))}</span>`
+    `<div class="rank-head">${avg ? `<span class="rank-avg">${avg}<small>th</small></span><span class="rank-n">${ranks.length}戦</span><span class="tokui ${tokuiDev(ranks) >= 50 ? 'plus' : 'minus'}">得意度 ${tokuiText(tokuiDev(ranks))}</span>`
       : '<span class="body blank">まだ記録がありません</span>'}${actions}</div>` +
     // 過去の順位は平均の計算用に保存するだけで、一覧表示はしない
     (padOpen ? `<div class="rank-pad">${Array.from({ length: RANK_MAX }, (_, i) => `<button data-rank="${i + 1}">${i + 1}<small>${ordSuffix(i + 1)}</small></button>`).join('')}</div>` : '');
@@ -1517,13 +1517,25 @@ function tokuiScore(ranks, base = overallAve()) {
   const adj = (ranks.reduce((a, b) => a + b, 0) + base * TOKUI_K) / (ranks.length + TOKUI_K);
   return base - adj;
 }
-const tokuiText = v => v === null ? '' : `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}`;
+// 表示は偏差値（記録のあるコース全体の中で、平均＝50、ばらつき1つ分＝±10）
+function tokuiStats(base = overallAve()) {
+  const scores = allTargets().map(x => getRanks(getNotes(x.t))).filter(r => r.length).map(r => tokuiScore(r, base));
+  const mean = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const sd = Math.sqrt(scores.reduce((a, v) => a + (v - mean) ** 2, 0) / (scores.length || 1));
+  return { base, mean, sd };
+}
+function tokuiDev(ranks, st = tokuiStats()) {
+  const v = tokuiScore(ranks, st.base);
+  if (v === null) return null;
+  return st.sd > 1e-9 ? 50 + 10 * (v - st.mean) / st.sd : 50;
+}
+const tokuiText = d => d === null ? '' : String(Math.round(d));
 
 // よく走るコース TOP5（順位を記録した回数が多い順。同じ回数ならAveが良い順）
 function renderTokui() {
-  const base = overallAve();
+  const st = tokuiStats();
   const scored = allTargets().map(x => ({ ...x, ranks: getRanks(getNotes(x.t)) })).filter(x => x.ranks.length)
-    .map(x => ({ ...x, score: tokuiScore(x.ranks, base) }));
+    .map(x => ({ ...x, score: tokuiDev(x.ranks, st) }));
   const list = $('rankingList');
   list.innerHTML = '';
   if (!scored.length) { list.innerHTML = '<p class="hint">まだ順位の記録がありません</p>'; return; }
@@ -1538,8 +1550,8 @@ function renderTokui() {
     });
   };
   const sorted = scored.slice().sort((a, b) => b.score - a.score);
-  section('得意コース TOP5', sorted.filter(x => x.score > 0).slice(0, 5));
-  section('苦手コース TOP5', sorted.filter(x => x.score < 0).reverse().slice(0, 5));
+  section('得意コース TOP5', sorted.filter(x => Math.round(x.score) > 50).slice(0, 5));
+  section('苦手コース TOP5', sorted.filter(x => Math.round(x.score) < 50).reverse().slice(0, 5));
 }
 function openListSheet(title, note, draw) {
   $('rankingTitle').textContent = title;
@@ -1582,7 +1594,7 @@ function renderProgress() {
 $('mRanking').onclick = () => { closeMenu(); openListSheet('人気コースランキング', '順位を記録した回数が多い順（周回・道中・SFCすべて）', renderRanking); };
 $('mTokui').onclick = () => {
   closeMenu();
-  openListSheet('得意コース・苦手コース', `自分の全体のAve（${overallAve().toFixed(1)}th）と比べた得意度。走った回数が少ないコースは控えめに評価します`, renderTokui);
+  openListSheet('得意コース・苦手コース', `得意度は偏差値（50が自分の平均的なコース、60以上でかなり得意）。走った回数が少ないコースは控えめに評価します（全体のAve ${overallAve().toFixed(1)}th）`, renderTokui);
 };
 $('rankingClose').onclick = () => $('rankingBg').classList.remove('open');
 $('rankingBg').onclick = e => { if (e.target.id === 'rankingBg') $('rankingBg').classList.remove('open'); };
